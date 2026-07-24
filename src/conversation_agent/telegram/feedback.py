@@ -1,4 +1,4 @@
-"""Feedback commands handled in Matvey's Telegram Saved Messages."""
+"""Legacy AAA.2 Saved Messages feedback parser kept for data compatibility."""
 
 from __future__ import annotations
 
@@ -202,18 +202,20 @@ def _required_reply_id(command: FeedbackCommand) -> int:
 def _feedback_update(command: FeedbackCommand) -> FeedbackUpdate:
     now = datetime.now(UTC).isoformat()
     if command.name == "good":
-        return FeedbackUpdate(status="approved", updated_at=now)
+        return FeedbackUpdate(status="approved", updated_at=now, source="saved_messages")
     if command.name == "bad":
         return FeedbackUpdate(
             status="rejected",
             updated_at=now,
             category=command.category,
             comment=command.comment,
+            source="saved_messages",
         )
     if command.name == "fix":
         return FeedbackUpdate(
             status="corrected",
             updated_at=now,
             corrected_reply_text=command.corrected_reply_text,
+            source="saved_messages",
         )
     raise FeedbackCommandError("Unsupported feedback command.")

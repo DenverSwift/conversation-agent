@@ -12,18 +12,36 @@ The path can be changed with `FEEDBACK_DATABASE_PATH`. The database, runtime dir
 
 If feedback is enabled, a generated-reply record must be written before Telegram delivery. A failed initial database write blocks that delivery so the agent does not create an AI-authored Telegram message that the exporter cannot identify later. With `FEEDBACK_ENABLED=false`, replies continue normally and no feedback database is required.
 
-## Saved Messages commands
+## Private trainer bot
 
-Commands are accepted only from Matvey's own Saved Messages chat. They are never forwarded to the allowed user and never invoke OpenAI.
+AAA.3 uses a separate Telegram Bot API account for feedback. The trainer runs
+as its own long-polling process and accepts updates only from
+`TRAINER_TELEGRAM_USER_ID` in the matching private
+`TRAINER_BOT_REVIEW_CHAT_ID`. It never forwards trainer actions to the allowed
+contact and never invokes OpenAI.
 
 ```text
-/good <reply_id>
-/bad <reply_id> <category or comment>
-/fix <reply_id> <corrected reply>
-/feedback_help
+/start  /help  /status  /recent  /pending  /cancel
 ```
 
-`/good` approves the generated reply. `/bad` rejects it and stores either a normalized category or free-text comment. `/fix` stores Matvey's correction as the preferred answer. Saved Messages cards can be disabled with `FEEDBACK_SAVED_MESSAGES_ENABLED=false`; commands remain available while feedback storage is enabled.
+Each review card shows the specific incoming text, exact generated reply,
+delivery metadata, model, prompt version, and generation time. `Good` approves
+the reply. `Bad` records a normalized reason or short free-text comment. `Fix`
+stores Matvey's correction as the preferred answer. `Should not reply` records
+a negative `should_not_reply` example. Corrections are never sent to the
+contact.
+
+Start and stop the process with:
+
+```bat
+scripts\start_trainer_bot.bat
+scripts\stop_trainer_bot.bat
+```
+
+`FEEDBACK_SAVED_MESSAGES_ENABLED` is deprecated and defaults to `false`.
+Historical AAA.2 feedback remains readable and exports with
+`feedback_source=saved_messages`; new reviews use
+`feedback_source=trainer_bot`.
 
 ## Telegram history export
 

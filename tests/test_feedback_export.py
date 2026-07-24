@@ -11,6 +11,8 @@ def record(
     *,
     status: str,
     corrected: str | None = None,
+    category: str | None = None,
+    source: str | None = None,
 ) -> GeneratedReplyRecord:
     return GeneratedReplyRecord(
         id=reply_id,
@@ -25,10 +27,11 @@ def record(
         context_json='[{"role":"user","text":"question"}]',
         delivery_status="sent",
         feedback_status=status,
-        feedback_category="wrong_tone" if status == "rejected" else None,
+        feedback_category=category or ("wrong_tone" if status == "rejected" else None),
         feedback_comment=None,
         corrected_reply_text=corrected,
         feedback_updated_at="2026-07-24T10:01:00+00:00",
+        feedback_source=source,
     )
 
 
@@ -62,3 +65,21 @@ def test_rejected_uncorrected_reply_is_not_positive(tmp_path) -> None:
 
     assert read_jsonl(tmp_path / "feedback_positive.jsonl") == []
     assert len(read_jsonl(tmp_path / "feedback_negative.jsonl")) == 1
+
+
+def test_trainer_and_historical_sources_remain_exportable(tmp_path) -> None:
+    write_feedback_exports(
+        output_directory=tmp_path,
+        records=[
+            record(1, status="approved", source="trainer_bot"),
+            record(2, status="rejected", category="should_not_reply"),
+        ],
+        redact_pii=False,
+    )
+
+    reviewed = read_jsonl(tmp_path / "reviewed_feedback.jsonl")
+    negative = read_jsonl(tmp_path / "feedback_negative.jsonl")
+
+    assert reviewed[0]["feedback_source"] == "trainer_bot"
+    assert reviewed[1]["feedback_source"] == "saved_messages"
+    assert negative[0]["feedback_category"] == "should_not_reply"

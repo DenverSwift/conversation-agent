@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Protocol
 
 from conversation_agent.storage.models import (
+    FeedbackCounts,
     FeedbackUpdate,
     GeneratedReplyRecord,
     NewGeneratedReply,
+    PendingInteraction,
 )
 
 
@@ -45,4 +47,51 @@ class FeedbackRepository(Protocol):
 
     def reviewed_replies(self) -> list[GeneratedReplyRecord]:
         """Return replies with explicit feedback in deterministic order."""
+        ...
+
+    def claim_notification(self, reply_id: int, *, attempted_at: str) -> bool:
+        """Atomically claim a reply card for delivery."""
+        ...
+
+    def finish_notification(
+        self,
+        reply_id: int,
+        *,
+        status: str,
+        attempted_at: str,
+        chat_id: int | None = None,
+        message_id: int | None = None,
+        error_category: str | None = None,
+    ) -> bool:
+        """Record the outcome of a trainer card delivery attempt."""
+        ...
+
+    def pending_notifications(self, *, limit: int = 20) -> list[GeneratedReplyRecord]:
+        """Return bounded retry candidates."""
+        ...
+
+    def requeue_stale_notifications(self, *, older_than: str) -> int:
+        """Make interrupted notification claims retryable."""
+        ...
+
+    def set_pending_interaction(self, interaction: PendingInteraction) -> None:
+        """Persist the trainer's pending text-entry action."""
+        ...
+
+    def get_pending_interaction(self, trainer_user_id: int) -> PendingInteraction | None:
+        """Return a trainer's current pending action."""
+        ...
+
+    def clear_pending_interaction(self, trainer_user_id: int) -> bool:
+        """Clear a trainer's pending action."""
+        ...
+
+    def recent_replies(
+        self, *, limit: int = 5, unreviewed_only: bool = False
+    ) -> list[GeneratedReplyRecord]:
+        """Return recent delivered replies."""
+        ...
+
+    def feedback_counts(self) -> FeedbackCounts:
+        """Return aggregate trainer status counts."""
         ...

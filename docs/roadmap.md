@@ -14,4 +14,4 @@ Conversation Agent follows the Cup Size capability progression defined in
 | `DD` | Digital clone |
 | `E` | Experimental future capabilities |
 
-The current release is `AAA.2`.
+The current release is `AAA.3`.

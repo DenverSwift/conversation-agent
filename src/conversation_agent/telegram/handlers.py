@@ -16,7 +16,6 @@ from conversation_agent.agent.context_builder import (
 from conversation_agent.settings import Settings
 from conversation_agent.storage.models import NewGeneratedReply
 from conversation_agent.storage.repository import FeedbackRepository
-from conversation_agent.telegram.feedback import feedback_card
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,7 @@ async def handle_incoming_event(
     own_user_id: int,
     dialog_locks: dict[int, asyncio.Lock],
     feedback_repository: FeedbackRepository | None = None,
+    review_notifier: Any | None = None,
 ) -> None:
     if not should_process_event(event, settings.allowed_telegram_user_id):
         return
@@ -80,6 +80,7 @@ async def handle_incoming_event(
             incoming_message_id=int(getattr(event, "id", 0)),
             reply=reply,
             context=context,
+            incoming_message_text=telegram_text(event),
         )
         if feedback_repository is not None and reply_id is None:
             return
@@ -111,17 +112,18 @@ async def handle_incoming_event(
             sent_message_id=int(sent_message_id) if sent_message_id is not None else None,
             sent_at=datetime.now(UTC).isoformat(),
         )
-        if (
-            feedback_repository is not None
-            and reply_id is not None
-            and delivery_recorded
-            and settings.feedback_saved_messages_enabled
-        ):
+        if reply_id is not None and delivery_recorded and review_notifier is not None:
             try:
-                await client.send_message("me", feedback_card(reply_id, dialog_id, reply))
+                assert feedback_repository is not None
+                feedback_repository.finish_notification(
+                    reply_id,
+                    status="pending",
+                    attempted_at=datetime.now(UTC).isoformat(),
+                )
+                await review_notifier.notify_reply(reply_id)
             except Exception as exc:  # noqa: BLE001
                 logger.error(
-                    "Saved Messages feedback card failed for reply_id=%s error_type=%s",
+                    "Trainer feedback card failed for reply_id=%s error_type=%s",
                     reply_id,
                     type(exc).__name__,
                 )
@@ -158,6 +160,7 @@ def _record_generated_reply(
     incoming_message_id: int,
     reply: str,
     context: list[ChatMessage],
+    incoming_message_text: str,
 ) -> int | None:
     if repository is None:
         return None
@@ -177,6 +180,7 @@ def _record_generated_reply(
                 prompt_version=settings.prompt_version,
                 generated_reply_text=reply,
                 context_json=context_json,
+                incoming_message_text=incoming_message_text,
             )
         )
     except Exception as exc:  # noqa: BLE001

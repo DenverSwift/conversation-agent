@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -20,8 +20,13 @@ class Settings:
     openai_timeout_seconds: float
     feedback_enabled: bool = True
     feedback_database_path: Path = Path(".runtime/feedback.sqlite3")
-    feedback_saved_messages_enabled: bool = True
-    prompt_version: str = "AAA.2"
+    feedback_saved_messages_enabled: bool = False
+    prompt_version: str = "AAA.3"
+    trainer_bot_enabled: bool = False
+    trainer_bot_token: str | None = field(default=None, repr=False)
+    trainer_telegram_user_id: int | None = None
+    trainer_bot_review_chat_id: int | None = None
+    trainer_bot_polling_enabled: bool = True
     training_export_directory: Path = Path(".runtime/exports")
     training_export_limit: int = 500
     training_export_context_limit: int = 10
@@ -32,6 +37,22 @@ class Settings:
     @classmethod
     def load(cls, env_file: str | Path = ".env") -> Settings:
         load_env_file(Path(env_file))
+        trainer_enabled = _boolean("TRAINER_BOT_ENABLED", default=False)
+        trainer_token = _optional("TRAINER_BOT_TOKEN")
+        trainer_user_id = _optional_int("TRAINER_TELEGRAM_USER_ID")
+        review_chat_id = _optional_int("TRAINER_BOT_REVIEW_CHAT_ID")
+        if trainer_enabled:
+            if not trainer_token:
+                raise ValueError("Missing required setting: TRAINER_BOT_TOKEN")
+            if trainer_user_id is None:
+                raise ValueError("Missing required setting: TRAINER_TELEGRAM_USER_ID")
+            review_chat_id = review_chat_id or trainer_user_id
+            if review_chat_id != trainer_user_id:
+                raise ValueError(
+                    "TRAINER_BOT_REVIEW_CHAT_ID must equal TRAINER_TELEGRAM_USER_ID "
+                    "for the private trainer bot"
+                )
+
         return cls(
             telegram_api_id=_required_int("TELEGRAM_API_ID"),
             telegram_api_hash=_required("TELEGRAM_API_HASH"),
@@ -48,9 +69,17 @@ class Settings:
             ),
             feedback_saved_messages_enabled=_boolean(
                 "FEEDBACK_SAVED_MESSAGES_ENABLED",
+                default=False,
+            ),
+            prompt_version=_with_default("PROMPT_VERSION", "AAA.3"),
+            trainer_bot_enabled=trainer_enabled,
+            trainer_bot_token=trainer_token,
+            trainer_telegram_user_id=trainer_user_id,
+            trainer_bot_review_chat_id=review_chat_id,
+            trainer_bot_polling_enabled=_boolean(
+                "TRAINER_BOT_POLLING_ENABLED",
                 default=True,
             ),
-            prompt_version=_with_default("PROMPT_VERSION", "AAA.2"),
             training_export_directory=Path(
                 _with_default("TRAINING_EXPORT_DIRECTORY", ".runtime/exports")
             ),
@@ -117,6 +146,21 @@ def _with_default(name: str, default: str) -> str:
     if not value:
         raise ValueError(f"Setting {name} must not be empty")
     return value
+
+
+def _optional(name: str) -> str | None:
+    value = os.environ.get(name, "").strip()
+    return value or None
+
+
+def _optional_int(name: str) -> int | None:
+    value = _optional(name)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"Setting {name} must be an integer") from exc
 
 
 def _positive_int_with_default(name: str, default: int) -> int:

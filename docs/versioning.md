@@ -4,7 +4,7 @@ Conversation Agent uses an internal Cup Size progression instead of semantic
 milestone versions. The version describes the growth of the agent's personality
 and cognitive capabilities, not the amount of code or the size of a release.
 
-The current project release is `AAA.2`.
+The current project release is `AAA.3`.
 
 ## How letters work
 
@@ -27,18 +27,19 @@ Examples:
 
 - `AAA.1` is the initial Telegram reply MVP.
 - `AAA.2` adds feedback collection and training-data exports.
+- `AAA.3` moves feedback review to a separate private trainer bot.
 - `AA.1` introduces the base personality capability.
 - `AA.2` improves prompts within that same capability.
 - `A.1` introduces per-contact adaptation.
 
 After the final numeric release in one stage, the next cognitive capability
-starts at `.1`, such as `AAA.3` followed by `AA.1`.
+starts at `.1`, such as a future final `AAA.x` followed by `AA.1`.
 
 ## Current roadmap
 
 | Cup size | Capability | Example |
 | --- | --- | --- |
-| `AAA` | Infrastructure | Telegram MVP, feedback, local exports |
+| `AAA` | Infrastructure | Telegram MVP, local exports, private trainer bot |
 | `AA` | Base personality | Stable global Matvey style |
 | `A` | Contact adaptation | Per-contact communication profiles |
 | `B` | Relationship memory | Durable relationship context |
@@ -49,14 +50,14 @@ starts at `.1`, such as `AAA.3` followed by `AA.1`.
 
 ## Configuration and compatibility
 
-`PROMPT_VERSION` uses the same notation, with `AAA.2` as the current default.
+`PROMPT_VERSION` uses the same notation, with `AAA.3` as the current default.
 Prompt versions already stored in SQLite remain valid historical strings and
 must stay readable; adopting this system does not migrate or rewrite existing
 records.
 
 Python package metadata requires a PEP 440-compatible value. The technical
-package version `0+aaa.2` encodes the current Cup Size release for packaging
-tools, while `[tool.conversation-agent].cup-version = "AAA.2"` in
+package version `0+aaa.3` encodes the current Cup Size release for packaging
+tools, while `[tool.conversation-agent].cup-version = "AAA.3"` in
 `pyproject.toml` is the authoritative project version.
 
 Cup Size adoption does not rename Git tags or rewrite Git history.

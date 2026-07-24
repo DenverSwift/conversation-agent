@@ -277,3 +277,35 @@ def test_feedback_disabled_does_not_create_database(tmp_path: Path) -> None:
 
     assert create_feedback_repository(current_settings) is None
     assert not database_path.exists()
+
+
+def test_sent_reply_triggers_trainer_notification(tmp_path: Path) -> None:
+    class FakeNotifier:
+        def __init__(self) -> None:
+            self.reply_ids: list[int] = []
+
+        async def notify_reply(self, reply_id: int) -> bool:
+            self.reply_ids.append(reply_id)
+            return True
+
+    repository = SQLiteFeedbackRepository(tmp_path / "feedback.sqlite3")
+    repository.initialize()
+    notifier = FakeNotifier()
+    event = FakeEvent(client=FakeClient([]), raw_text="incoming")
+
+    asyncio.run(
+        handle_incoming_event(
+            event,
+            settings=settings(tmp_path),
+            responder=FakeResponder("generated"),
+            own_user_id=OWN_USER_ID,
+            dialog_locks={},
+            feedback_repository=repository,
+            review_notifier=notifier,
+        )
+    )
+
+    record = repository.get_reply(1)
+    assert notifier.reply_ids == [1]
+    assert record is not None
+    assert record.incoming_message_text == "incoming"

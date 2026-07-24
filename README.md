@@ -4,7 +4,7 @@ An AI communication agent that understands personal context, mimics a user's com
 
 ## Purpose
 
-`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AAA.2` adds local feedback collection and review-first dataset exports without implementing training or automatic personalization.
+`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AAA.3` adds a separate private trainer bot for reviewing generated replies without exposing the personal Telegram account to Bot API polling.
 
 ## Repository Structure
 
@@ -26,6 +26,7 @@ conversation-agent/
 |-- src/conversation_agent/
 |   |-- storage/
 |   |-- telegram/
+|   |-- trainer/
 |   |-- tools/
 |   `-- training/
 |-- tests/
@@ -36,11 +37,11 @@ conversation-agent/
 
 ## Current Status
 
-Release `AAA.2`: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies and explicit Saved Messages feedback can be stored in a local SQLite database, and local CLI tools can export human-authored history or reviewed feedback for manual inspection.
+Release `AAA.3`: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies are stored in local SQLite, reviewed through a separate private trainer bot, and available to the existing local export tools.
 
 ## Versioning
 
-Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AAA.2`: `AAA` identifies the infrastructure capability stage, while `.2` identifies its second engineering iteration.
+Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AAA.3`: `AAA` identifies the infrastructure capability stage, while `.3` identifies its third engineering iteration.
 
 See [docs/versioning.md](docs/versioning.md) for the complete progression, rules, roadmap, and examples.
 
@@ -57,20 +58,32 @@ See [docs/versioning.md](docs/versioning.md) for the complete progression, rules
 1. Copy `.env.example` to `.env` and fill in local secrets.
 2. Run `scripts\login_telegram.bat` once to create the Telethon session.
 3. Run `scripts\start_agent.bat` to start the agent.
-4. Run `scripts\stop_agent.bat` to stop the running agent by PID.
+4. Create a private bot with BotFather and fill the `TRAINER_BOT_*` settings.
+5. Open the bot from the configured trainer account and send `/start`.
+6. Run `scripts\start_trainer_bot.bat` in a second terminal.
+
+Use `scripts\stop_agent.bat` and `scripts\stop_trainer_bot.bat` for clean shutdown.
 
 ## Local Feedback
 
 Feedback is local by design because generated replies, context snapshots, and corrections contain private conversation data. With `FEEDBACK_ENABLED=true`, SQLite is created at `.runtime/feedback.sqlite3`. Set it to `false` to keep the original reply behavior without creating or requiring a database.
 
-When Saved Messages cards are enabled, use:
+The trainer bot accepts these private commands:
 
 ```text
-/good <reply_id>
-/bad <reply_id> <category or comment>
-/fix <reply_id> <corrected reply>
-/feedback_help
+/start
+/help
+/status
+/recent
+/pending
+/cancel
 ```
+
+Review cards provide `Good`, `Bad`, `Fix`, `Should not reply`, and `Details`
+buttons. Corrections and comments are stored locally and are never sent to the
+allowed contact. `FEEDBACK_SAVED_MESSAGES_ENABLED` is retained only as a
+deprecated compatibility setting; AAA.3 does not register Saved Messages
+feedback commands or create cards there.
 
 History and reviewed-feedback exports are written only under `.runtime/exports/`:
 
@@ -79,4 +92,7 @@ scripts\export_training_data.bat
 scripts\export_feedback.bat
 ```
 
-See [docs/feedback-and-exports.md](docs/feedback-and-exports.md) for data handling, grouping, cleaning, deletion, and privacy details. Every exported dataset requires manual review before any future training.
+See [docs/trainer-bot.md](docs/trainer-bot.md) for setup and operating details,
+and [docs/feedback-and-exports.md](docs/feedback-and-exports.md) for data
+handling, grouping, cleaning, deletion, and privacy. Every exported dataset
+requires manual review before any future training.

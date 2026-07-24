@@ -17,6 +17,7 @@ from conversation_agent.settings import Settings
 from conversation_agent.storage.repository import FeedbackRepository
 from conversation_agent.storage.sqlite_repository import SQLiteFeedbackRepository
 from conversation_agent.telegram.client import create_telegram_client, register_message_handler
+from conversation_agent.trainer.notification_client import TrainerNotificationClient
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,30 @@ async def run_agent() -> None:
 
     with SingleInstanceLock(settings.runtime_dir):
         feedback_repository = create_feedback_repository(settings)
-        client = await create_telegram_client(settings)
+        trainer_bot: Any | None = None
+        review_notifier: TrainerNotificationClient | None = None
+        if settings.trainer_bot_enabled:
+            if feedback_repository is None:
+                raise ValueError("FEEDBACK_ENABLED must be true when TRAINER_BOT_ENABLED is true")
+            assert settings.trainer_bot_token is not None
+            assert settings.trainer_bot_review_chat_id is not None
+            from telegram import Bot
+
+            from conversation_agent.trainer.bot import telegram_markup
+
+            trainer_bot = Bot(settings.trainer_bot_token)
+            await trainer_bot.initialize()
+            review_notifier = TrainerNotificationClient(
+                bot=trainer_bot,
+                repository=feedback_repository,
+                review_chat_id=settings.trainer_bot_review_chat_id,
+                markup_factory=telegram_markup,
+            )
+        client: Any | None = None
         try:
-            me = await client.get_me()
+            active_client = await create_telegram_client(settings)
+            client = active_client
+            me = await active_client.get_me()
             own_user_id = int(me.id)
             instructions = build_instructions(settings.readme_path)
             reply_client = OpenAIReplyClient(
@@ -74,21 +96,25 @@ async def run_agent() -> None:
             )
             responder = Responder(reply_client, instructions)
             register_message_handler(
-                client,
+                active_client,
                 settings=settings,
                 responder=responder,
                 own_user_id=own_user_id,
                 dialog_locks={},
                 feedback_repository=feedback_repository,
+                review_notifier=review_notifier,
             )
             logger.info(
                 "Agent started for allowed_user_id=%s with context_limit=%s",
                 settings.allowed_telegram_user_id,
                 settings.context_message_limit,
             )
-            await wait_until_stopped(client, settings.runtime_dir / "agent.stop")
+            await wait_until_stopped(active_client, settings.runtime_dir / "agent.stop")
         finally:
-            await client.disconnect()
+            if client is not None:
+                await client.disconnect()
+            if trainer_bot is not None:
+                await trainer_bot.shutdown()
             logger.info("Telegram client disconnected")
 
 

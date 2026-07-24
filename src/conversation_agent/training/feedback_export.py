@@ -97,6 +97,8 @@ def _reviewed_item(
         "feedback_status": record.feedback_status,
         "feedback_category": record.feedback_category,
         "feedback_comment": record.feedback_comment,
+        "feedback_source": record.feedback_source or "saved_messages",
+        "feedback_trainer_user_id": record.feedback_trainer_user_id,
         "created_at": record.created_at,
     }
 
