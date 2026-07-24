@@ -37,6 +37,7 @@ htmlcov/
 .env
 .env.*
 !.env.example
+.secrets/
 
 # Logs
 *.log
@@ -46,3 +47,6 @@ logs/
 *.session
 *.session-journal
 *.session.save
+
+# Runtime state
+.runtime/
