@@ -18,6 +18,14 @@ ENV_KEYS = (
     "TRAINER_BOT_TOKEN",
     "TRAINER_TELEGRAM_USER_ID",
     "TRAINER_BOT_REVIEW_CHAT_ID",
+    "STYLE_ADAPTATION_ENABLED",
+    "STYLE_BUNDLE_DIRECTORY",
+    "STYLE_SOURCE_EXAMPLES_PATH",
+    "STYLE_ANALYSIS_MODEL",
+    "STYLE_RETRIEVAL_LIMIT",
+    "STYLE_RULES_MAX_CHARS",
+    "STYLE_EXAMPLES_MAX_CHARS",
+    "STYLE_REQUIRE_BUNDLE",
 )
 
 
@@ -51,7 +59,17 @@ def test_trainer_settings_are_optional_when_disabled(tmp_path, monkeypatch) -> N
 
     assert not settings.trainer_bot_enabled
     assert settings.trainer_bot_token is None
-    assert settings.prompt_version == "AAA.3"
+    assert settings.prompt_version == "AA.1"
+
+
+def test_style_adaptation_can_be_explicitly_disabled(tmp_path, monkeypatch) -> None:
+    clear_environment(monkeypatch)
+
+    settings = Settings.load(
+        write_env(tmp_path, "STYLE_ADAPTATION_ENABLED=false\n")
+    )
+
+    assert not settings.style_adaptation_enabled
 
 
 def test_enabled_trainer_requires_token(tmp_path, monkeypatch) -> None:

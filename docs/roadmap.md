@@ -14,12 +14,13 @@ Conversation Agent follows the Cup Size capability progression defined in
 | `DD` | Digital clone |
 | `E` | Experimental future capabilities |
 
-The current released implementation is `AAA.3`.
+The current released implementation is `AA.1`.
 
-## Next implementation target: AA.1
+## AA.1: Base personality
 
-AA.1 introduces base personality through runtime few-shot adaptation. It does
-not depend on an OpenAI fine-tuning job and does not modify model weights.
+AA.1 means: **Base personality through persistent runtime behavior rules and
+dynamic human example injection.** It does not depend on an OpenAI fine-tuning
+job and does not modify model weights.
 
 Required runtime path:
 
@@ -33,7 +34,7 @@ incoming message
 -> Telegram reply
 ```
 
-AA.1 is complete only when the runtime:
+The AA.1 runtime:
 
 - loads a global style profile;
 - reads provider-independent human examples and corrected Fix feedback;
@@ -43,10 +44,6 @@ AA.1 is complete only when the runtime:
 - tracks provenance through selection and prompt assembly;
 - injects the selected examples before calling the configured base model;
 - proves with tests that the full 500-example dataset is not sent per request.
-
-As of AAA.3, feedback collection and JSONL export are implemented. Runtime
-loading, relevance ranking, provenance-aware selection, and few-shot prompt
-injection are not implemented.
 
 ## Longer-term training
 

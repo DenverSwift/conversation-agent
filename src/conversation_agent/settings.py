@@ -21,7 +21,7 @@ class Settings:
     feedback_enabled: bool = True
     feedback_database_path: Path = Path(".runtime/feedback.sqlite3")
     feedback_saved_messages_enabled: bool = False
-    prompt_version: str = "AAA.3"
+    prompt_version: str = "AA.1"
     trainer_bot_enabled: bool = False
     trainer_bot_token: str | None = field(default=None, repr=False)
     trainer_telegram_user_id: int | None = None
@@ -31,6 +31,14 @@ class Settings:
     training_export_limit: int = 500
     training_export_context_limit: int = 10
     training_export_redact_pii: bool = True
+    style_adaptation_enabled: bool = True
+    style_bundle_directory: Path = Path(".runtime/style")
+    style_source_examples_path: Path = Path(".runtime/exports/cleaned_examples.jsonl")
+    style_analysis_model: str = "gpt-4o-mini"
+    style_retrieval_limit: int = 8
+    style_rules_max_chars: int = 12000
+    style_examples_max_chars: int = 10000
+    style_require_bundle: bool = True
     log_path: Path = Path("logs/agent.log")
     runtime_dir: Path = Path(".runtime")
 
@@ -71,7 +79,7 @@ class Settings:
                 "FEEDBACK_SAVED_MESSAGES_ENABLED",
                 default=False,
             ),
-            prompt_version=_with_default("PROMPT_VERSION", "AAA.3"),
+            prompt_version=_with_default("PROMPT_VERSION", "AA.1"),
             trainer_bot_enabled=trainer_enabled,
             trainer_bot_token=trainer_token,
             trainer_telegram_user_id=trainer_user_id,
@@ -92,6 +100,30 @@ class Settings:
                 "TRAINING_EXPORT_REDACT_PII",
                 default=True,
             ),
+            style_adaptation_enabled=_boolean(
+                "STYLE_ADAPTATION_ENABLED",
+                default=True,
+            ),
+            style_bundle_directory=Path(
+                _with_default("STYLE_BUNDLE_DIRECTORY", ".runtime/style")
+            ),
+            style_source_examples_path=Path(
+                _with_default(
+                    "STYLE_SOURCE_EXAMPLES_PATH",
+                    ".runtime/exports/cleaned_examples.jsonl",
+                )
+            ),
+            style_analysis_model=_with_default("STYLE_ANALYSIS_MODEL", "gpt-4o-mini"),
+            style_retrieval_limit=_positive_int_with_default("STYLE_RETRIEVAL_LIMIT", 8),
+            style_rules_max_chars=_positive_int_with_default(
+                "STYLE_RULES_MAX_CHARS",
+                12000,
+            ),
+            style_examples_max_chars=_positive_int_with_default(
+                "STYLE_EXAMPLES_MAX_CHARS",
+                10000,
+            ),
+            style_require_bundle=_boolean("STYLE_REQUIRE_BUNDLE", default=True),
         )
 
 

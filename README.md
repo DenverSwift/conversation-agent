@@ -4,7 +4,7 @@ An AI communication agent that understands personal context, mimics a user's com
 
 ## Purpose
 
-`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AAA.3` adds a separate private trainer bot for reviewing generated replies without exposing the personal Telegram account to Bot API polling.
+`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AA.1` adds persistent runtime Matvey behavior rules and dynamic local example retrieval without modifying model weights.
 
 ## Repository Structure
 
@@ -20,6 +20,8 @@ conversation-agent/
 |   |-- vision.md
 |   |-- architecture.md
 |   |-- roadmap.md
+|   |-- runtime-style-rules.md
+|   |-- style-runtime-audit.md
 |   |-- versioning.md
 |   `-- adr/
 |-- prompts/
@@ -37,15 +39,14 @@ conversation-agent/
 
 ## Current Status
 
-Release `AAA.3`: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies are stored in local SQLite, reviewed through a separate private trainer bot, and available to the existing local export tools.
-
-The current runtime does not load exported datasets or Fix corrections during
-generation. It uses the global behavior section below plus up to 30 recent
-Telegram messages and sends that context to the configured OpenAI base model.
+Release `AA.1`: the agent remains restricted to Telegram user `1751105897`.
+Generated replies and trainer feedback stay in local SQLite. A compiled local
+rulebook is included in each style-enabled model request, and a small relevant
+set of real Matvey examples and Fix corrections is retrieved dynamically.
 
 ## AA.1 Runtime Adaptation
 
-AA.1 must implement provider-independent dynamic few-shot retrieval:
+AA.1 implements provider-independent dynamic few-shot retrieval:
 
 ```text
 incoming message
@@ -57,15 +58,19 @@ incoming message
 -> Telegram reply
 ```
 
-The complete 500-example export is not sent on every request. AA.1 will select
-only a small relevant set. AI-generated replies are never style evidence,
+The complete 500-example export is analyzed offline and is not sent on every
+request. Runtime selects only a small relevant set. AI-generated replies are never style evidence,
 rejected replies are never positive examples, and human-authored Fix
 corrections have the highest retrieval priority. This changes request context,
 not model weights.
 
+The compiled behavior rulebook is analogous to persistent project instructions
+such as `AGENTS.md`: it condenses observed rules and is supplied on every
+request. Original examples remain in a private local example bank.
+
 ## Versioning
 
-Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AAA.3`: `AAA` identifies the infrastructure capability stage, while `.3` identifies its third engineering iteration.
+Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AA.1`: `AA` identifies the base-personality capability stage, while `.1` identifies its first engineering iteration.
 
 See [docs/versioning.md](docs/versioning.md) for the complete progression, rules, roadmap, and examples.
 
@@ -85,6 +90,19 @@ See [docs/versioning.md](docs/versioning.md) for the complete progression, rules
 4. Create a private bot with BotFather and fill the `TRAINER_BOT_*` settings.
 5. Open the bot from the configured trainer account and send `/start`.
 6. Run `scripts\start_trainer_bot.bat` in a second terminal.
+
+For AA.1 style adaptation, prepare local private artifacts before starting the
+agent:
+
+```bat
+scripts\export_training_data.bat
+scripts\build_style_bundle.bat
+scripts\inspect_style_runtime.bat
+```
+
+The export and style bundle are intentionally not synchronized by Git. Build
+them on every runtime device that has the Telegram session and private data, or
+copy them through a separately secured private channel.
 
 Use `scripts\stop_agent.bat` and `scripts\stop_trainer_bot.bat` for clean shutdown.
 
@@ -118,6 +136,7 @@ scripts\export_feedback.bat
 ```
 
 See [docs/trainer-bot.md](docs/trainer-bot.md) for setup and operating details,
+[docs/runtime-style-rules.md](docs/runtime-style-rules.md) for AA.1 style setup,
 and [docs/feedback-and-exports.md](docs/feedback-and-exports.md) for data
 handling, grouping, cleaning, deletion, and privacy. Every exported dataset
 requires manual review. Datasets remain useful for runtime example retrieval,

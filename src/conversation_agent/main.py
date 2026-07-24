@@ -16,6 +16,8 @@ from conversation_agent.runtime import AlreadyRunningError, SingleInstanceLock
 from conversation_agent.settings import Settings
 from conversation_agent.storage.repository import FeedbackRepository
 from conversation_agent.storage.sqlite_repository import SQLiteFeedbackRepository
+from conversation_agent.style.bundle import load_style_bundle
+from conversation_agent.style.runtime import StyleRuntime
 from conversation_agent.telegram.client import create_telegram_client, register_message_handler
 from conversation_agent.trainer.notification_client import TrainerNotificationClient
 
@@ -63,6 +65,7 @@ async def run_agent() -> None:
 
     with SingleInstanceLock(settings.runtime_dir):
         feedback_repository = create_feedback_repository(settings)
+        style_runtime = create_style_runtime(settings, feedback_repository)
         trainer_bot: Any | None = None
         review_notifier: TrainerNotificationClient | None = None
         if settings.trainer_bot_enabled:
@@ -94,7 +97,11 @@ async def run_agent() -> None:
                 model=settings.openai_model,
                 timeout_seconds=settings.openai_timeout_seconds,
             )
-            responder = Responder(reply_client, instructions)
+            responder = Responder(
+                reply_client,
+                instructions,
+                style_runtime=style_runtime,
+            )
             register_message_handler(
                 active_client,
                 settings=settings,
@@ -126,6 +133,39 @@ def create_feedback_repository(settings: Settings) -> FeedbackRepository | None:
     repository.initialize()
     logger.info("Local feedback storage initialized")
     return repository
+
+
+def create_style_runtime(
+    settings: Settings,
+    repository: FeedbackRepository | None,
+) -> StyleRuntime | None:
+    if not settings.style_adaptation_enabled:
+        logger.info("Runtime style adaptation is disabled")
+        return None
+    try:
+        bundle = load_style_bundle(
+            settings.style_bundle_directory,
+            contact_id=settings.allowed_telegram_user_id,
+        )
+    except ValueError:
+        if settings.style_require_bundle:
+            raise
+        logger.warning("Style bundle unavailable; continuing with AAA.3 prompt behavior")
+        return None
+    logger.info(
+        "Style bundle loaded source_examples=%s rules=%s",
+        bundle.source_example_count,
+        len(bundle.rules),
+    )
+    return StyleRuntime(
+        bundle=bundle,
+        bundle_directory=settings.style_bundle_directory,
+        repository=repository,
+        contact_id=settings.allowed_telegram_user_id,
+        retrieval_limit=settings.style_retrieval_limit,
+        rules_max_chars=settings.style_rules_max_chars,
+        examples_max_chars=settings.style_examples_max_chars,
+    )
 
 
 def configure_logging(log_path: Path) -> None:

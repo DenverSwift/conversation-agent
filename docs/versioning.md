@@ -4,7 +4,7 @@ Conversation Agent uses an internal Cup Size progression instead of semantic
 milestone versions. The version describes the growth of the agent's personality
 and cognitive capabilities, not the amount of code or the size of a release.
 
-The current project release is `AAA.3`.
+The current project release is `AA.1`.
 
 ## How letters work
 
@@ -50,14 +50,14 @@ starts at `.1`, such as a future final `AAA.x` followed by `AA.1`.
 
 ## Configuration and compatibility
 
-`PROMPT_VERSION` uses the same notation, with `AAA.3` as the current default.
+`PROMPT_VERSION` uses the same notation, with `AA.1` as the current default.
 Prompt versions already stored in SQLite remain valid historical strings and
 must stay readable; adopting this system does not migrate or rewrite existing
 records.
 
 Python package metadata requires a PEP 440-compatible value. The technical
-package version `0+aaa.3` encodes the current Cup Size release for packaging
-tools, while `[tool.conversation-agent].cup-version = "AAA.3"` in
+package version `0+aa.1` encodes the current Cup Size release for packaging
+tools, while `[tool.conversation-agent].cup-version = "AA.1"` in
 `pyproject.toml` is the authoritative project version.
 
 Cup Size adoption does not rename Git tags or rewrite Git history.

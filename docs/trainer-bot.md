@@ -81,3 +81,7 @@ create or process new Saved Messages feedback.
 The existing feedback exporter treats approved and corrected reviews as
 positive data, rejected reviews as negative data, and never promotes an
 uncorrected rejection to a positive target.
+
+For AA.1 style retrieval, only human-authored Fix corrections are positive
+Matvey evidence. A Good-reviewed AI reply remains useful for evaluation but is
+never treated as proof of Matvey's writing style.

@@ -74,8 +74,8 @@ export_summary.json
 The summary contains aggregate counts only, never conversation text.
 
 `TRAINING_EXPORT_LIMIT=500` is an export bound, not a runtime prompt size. The
-current agent does not load these files during generation, and the complete
-dataset must not be sent on every request when AA.1 retrieval is implemented.
+AA.1 compiler reads these files offline, and the complete dataset is never sent
+on every runtime request.
 
 ## Reviewed feedback export
 
@@ -108,8 +108,8 @@ evaluation or preference analysis, but must never teach Matvey's style.
   in local SQLite.
 - **Dataset export** writes provider-independent JSONL for inspection and
   downstream tools.
-- **Runtime few-shot adaptation** will select a small relevant subset for each
-  AA.1 request; it is not implemented in AAA.3.
+- **Runtime few-shot adaptation** selects a small relevant subset for each AA.1
+  request.
 - **Optional future training** may use an open-weight model or another
   provider-independent workflow after explicit review. It is not required for
   AA.1.

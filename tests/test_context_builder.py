@@ -73,3 +73,31 @@ def test_context_order_and_roles_are_chronological() -> None:
         ("user", "third"),
         ("user", "fourth"),
     ]
+
+
+def test_context_marks_ai_and_human_matvey_provenance() -> None:
+    messages = [
+        FakeMessage(id=1, sender_id=1751105897, raw_text="contact"),
+        FakeMessage(id=2, sender_id=42, raw_text="human", out=True),
+        FakeMessage(id=3, sender_id=42, raw_text="agent", out=True),
+    ]
+    current = FakeMessage(id=4, sender_id=1751105897, raw_text="current")
+
+    context = asyncio.run(
+        build_dialog_context(
+            FakeClient(messages),
+            peer=1751105897,
+            allowed_user_id=1751105897,
+            own_user_id=42,
+            limit=30,
+            current_message=current,
+            known_ai_message_ids={3},
+        )
+    )
+
+    assert [message.provenance for message in context] == [
+        "contact",
+        "human_matvey",
+        "ai_generated",
+        "contact",
+    ]

@@ -1,6 +1,6 @@
 # Architecture
 
-## Current AAA.3 boundaries
+## Current AA.1 boundaries
 
 - `telegram/` filters Telethon events and sends replies from Matvey's personal account.
 - `trainer/` owns the separate private Bot API review UI and notification delivery.
@@ -27,25 +27,9 @@ When feedback is enabled, the generated reply record is created before Telegram 
 
 Telegram delivery and SQLite cannot share one atomic transaction. A failure after Telegram accepts a message but before its returned ID is persisted is logged without private text and requires manual dataset review.
 
-## Current generation path
-
-The implemented AAA.3 runtime path is:
-
-```text
-incoming message
--> global Matvey behavior loaded from README
--> up to 30 recent Telegram messages
--> configured OpenAI base model
--> Telegram reply
-```
-
-The runtime does not read `raw_examples.jsonl`, `cleaned_examples.jsonl`, or
-feedback export files. It does not retrieve Fix corrections. Therefore, the
-configured export limit of 500 has no effect on generation today.
-
 ## AA.1 runtime style adaptation
 
-Dynamic few-shot retrieval is an AA.1 implementation requirement:
+Dynamic few-shot retrieval is the implemented AA.1 path:
 
 ```text
 incoming message
@@ -57,7 +41,7 @@ incoming message
 -> Telegram reply
 ```
 
-AA.1 must select a small set of relevant examples rather than sending the
+AA.1 selects a small set of relevant examples rather than sending the
 complete 500-message dataset on every request. Selection and prompt assembly
 must preserve provenance so the application can enforce these evidence rules:
 

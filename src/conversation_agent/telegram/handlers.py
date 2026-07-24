@@ -52,6 +52,11 @@ async def handle_incoming_event(
         message_id = getattr(event, "id", "unknown")
 
         try:
+            known_ai_ids = (
+                feedback_repository.sent_message_ids(dialog_id)
+                if feedback_repository is not None
+                else set()
+            )
             context = await build_dialog_context(
                 client,
                 peer,
@@ -59,6 +64,7 @@ async def handle_incoming_event(
                 own_user_id=own_user_id,
                 limit=settings.context_message_limit,
                 current_message=event,
+                known_ai_message_ids=known_ai_ids,
             )
             reply = (await responder.reply(context)).strip()
         except Exception as exc:  # noqa: BLE001
@@ -165,7 +171,15 @@ def _record_generated_reply(
     if repository is None:
         return None
     context_json = json.dumps(
-        [{"role": message.role, "text": message.content} for message in context],
+        [
+            {
+                "role": message.role,
+                "text": message.content,
+                "provenance": message.provenance,
+                "message_id": message.message_id,
+            }
+            for message in context
+        ],
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,

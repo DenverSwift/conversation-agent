@@ -10,6 +10,8 @@ from typing import Any
 class ChatMessage:
     role: str
     content: str
+    provenance: str = "unknown"
+    message_id: int | None = None
 
 
 def telegram_text(message: Any) -> str:
@@ -36,6 +38,7 @@ async def build_dialog_context(
     own_user_id: int,
     limit: int,
     current_message: Any,
+    known_ai_message_ids: set[int] | None = None,
 ) -> list[ChatMessage]:
     current_text = telegram_text(current_message)
     current_id = getattr(current_message, "id", None)
@@ -53,13 +56,30 @@ async def build_dialog_context(
             break
 
     ordered = sorted(previous, key=_message_order_key)
-    context = [
-        ChatMessage(role=role, content=telegram_text(message))
-        for message in ordered
-        if (role := role_for_message(message, allowed_user_id, own_user_id)) is not None
-    ]
+    ai_ids = known_ai_message_ids or set()
+    context = []
+    for message in ordered:
+        role = role_for_message(message, allowed_user_id, own_user_id)
+        if role is None:
+            continue
+        message_id = int(getattr(message, "id", 0) or 0)
+        context.append(
+            ChatMessage(
+                role=role,
+                content=telegram_text(message),
+                provenance=_provenance(message, allowed_user_id, ai_ids),
+                message_id=message_id,
+            )
+        )
     if current_text and limit > 0:
-        context.append(ChatMessage(role="user", content=current_text))
+        context.append(
+            ChatMessage(
+                role="user",
+                content=current_text,
+                provenance="contact",
+                message_id=int(current_id) if current_id is not None else None,
+            )
+        )
     return context[-limit:]
 
 
@@ -71,3 +91,16 @@ def _message_order_key(message: Any) -> tuple[bool, Any, int]:
     date = getattr(message, "date", None)
     message_id = getattr(message, "id", 0) or 0
     return (date is None, date or message_id, message_id)
+
+
+def _provenance(
+    message: Any,
+    allowed_user_id: int,
+    known_ai_message_ids: set[int],
+) -> str:
+    if getattr(message, "sender_id", None) == allowed_user_id:
+        return "contact"
+    message_id = int(getattr(message, "id", 0) or 0)
+    if message_id in known_ai_message_ids:
+        return "ai_generated"
+    return "human_matvey"
