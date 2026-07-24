@@ -77,8 +77,8 @@ async def export_training_data() -> dict[str, Any]:
                 context_limit=settings.training_export_context_limit,
             )
             print(
-                f"Успешно экспортировано! Исходных примеров: {summary.get('raw_example_count', 0)}, "
-                f"очищенных: {summary.get('cleaned_example_count', 0)} -> {settings.training_export_directory}",
+                f"Успешно экспортировано! Исходных найдено: {summary.get('human_authored_target_replies_found', 0)}, "
+                f"экспортировано примеров: {summary.get('examples_exported', 0)} -> {settings.training_export_directory}",
                 file=sys.stderr,
             )
             return summary
