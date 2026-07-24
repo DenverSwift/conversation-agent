@@ -50,3 +50,8 @@ logs/
 
 # Runtime state
 .runtime/
+
+# Local databases and exports
+*.sqlite
+*.sqlite3
+exports/

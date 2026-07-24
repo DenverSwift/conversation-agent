@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from conversation_agent.main import create_feedback_repository
 from conversation_agent.settings import Settings
+from conversation_agent.storage.sqlite_repository import SQLiteFeedbackRepository
 from conversation_agent.telegram.handlers import handle_incoming_event
 
 ALLOWED_USER_ID = 1751105897
@@ -57,12 +60,16 @@ class FakeEvent:
         self.id = message_id
         self.chat_id = sender_id
         self.sent: list[str] = []
+        self.respond_error: Exception | None = None
 
     async def get_input_chat(self) -> int:
         return self.chat_id
 
-    async def respond(self, text: str) -> None:
+    async def respond(self, text: str) -> FakeMessage:
+        if self.respond_error is not None:
+            raise self.respond_error
         self.sent.append(text)
+        return FakeMessage(id=99, sender_id=OWN_USER_ID, raw_text=text, out=True)
 
 
 class FakeResponder:
@@ -183,3 +190,90 @@ def test_manual_reply_cancels_prepared_llm_reply(tmp_path: Path) -> None:
 
     assert responder.calls == 1
     assert event.sent == []
+
+
+def test_private_message_text_is_not_written_to_logs(
+    tmp_path: Path,
+    caplog,
+) -> None:
+    private_text = "private conversation text"
+    event = FakeEvent(client=FakeClient([]))
+    responder = FakeResponder(error=RuntimeError(private_text))
+
+    with caplog.at_level(logging.ERROR):
+        run_handler(event, responder, tmp_path)
+
+    assert private_text not in caplog.text
+
+
+def test_feedback_command_does_not_trigger_openai(tmp_path: Path) -> None:
+    event = FakeEvent(
+        client=FakeClient([]),
+        sender_id=OWN_USER_ID,
+        out=True,
+        raw_text="/good 1",
+    )
+    responder = FakeResponder()
+
+    run_handler(event, responder, tmp_path)
+
+    assert responder.calls == 0
+    assert event.sent == []
+
+
+def test_failed_telegram_delivery_updates_feedback_record(tmp_path: Path) -> None:
+    repository = SQLiteFeedbackRepository(tmp_path / "feedback.sqlite3")
+    repository.initialize()
+    event = FakeEvent(client=FakeClient([]))
+    event.respond_error = RuntimeError("telegram unavailable")
+    responder = FakeResponder("generated")
+    current_settings = replace(settings(tmp_path), feedback_saved_messages_enabled=False)
+
+    asyncio.run(
+        handle_incoming_event(
+            event,
+            settings=current_settings,
+            responder=responder,
+            own_user_id=OWN_USER_ID,
+            dialog_locks={},
+            feedback_repository=repository,
+        )
+    )
+
+    record = repository.get_reply(1)
+    assert record is not None
+    assert record.delivery_status == "failed"
+
+
+def test_feedback_storage_failure_blocks_delivery(tmp_path: Path) -> None:
+    class FailingRepository:
+        def create_generated_reply(self, reply) -> int:
+            raise OSError("disk unavailable")
+
+    event = FakeEvent(client=FakeClient([]))
+    responder = FakeResponder("generated")
+
+    asyncio.run(
+        handle_incoming_event(
+            event,
+            settings=settings(tmp_path),
+            responder=responder,
+            own_user_id=OWN_USER_ID,
+            dialog_locks={},
+            feedback_repository=FailingRepository(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert event.sent == []
+
+
+def test_feedback_disabled_does_not_create_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "feedback.sqlite3"
+    current_settings = replace(
+        settings(tmp_path),
+        feedback_enabled=False,
+        feedback_database_path=database_path,
+    )
+
+    assert create_feedback_repository(current_settings) is None
+    assert not database_path.exists()

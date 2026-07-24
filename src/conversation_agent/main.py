@@ -14,6 +14,8 @@ from conversation_agent.agent.responder import Responder
 from conversation_agent.llm.openai_client import OpenAIReplyClient
 from conversation_agent.runtime import AlreadyRunningError, SingleInstanceLock
 from conversation_agent.settings import Settings
+from conversation_agent.storage.repository import FeedbackRepository
+from conversation_agent.storage.sqlite_repository import SQLiteFeedbackRepository
 from conversation_agent.telegram.client import create_telegram_client, register_message_handler
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ async def run_agent() -> None:
     validate_runtime_files(settings)
 
     with SingleInstanceLock(settings.runtime_dir):
+        feedback_repository = create_feedback_repository(settings)
         client = await create_telegram_client(settings)
         try:
             me = await client.get_me()
@@ -76,6 +79,7 @@ async def run_agent() -> None:
                 responder=responder,
                 own_user_id=own_user_id,
                 dialog_locks={},
+                feedback_repository=feedback_repository,
             )
             logger.info(
                 "Agent started for allowed_user_id=%s with context_limit=%s",
@@ -86,6 +90,16 @@ async def run_agent() -> None:
         finally:
             await client.disconnect()
             logger.info("Telegram client disconnected")
+
+
+def create_feedback_repository(settings: Settings) -> FeedbackRepository | None:
+    if not settings.feedback_enabled:
+        logger.info("Local feedback collection is disabled")
+        return None
+    repository = SQLiteFeedbackRepository(settings.feedback_database_path)
+    repository.initialize()
+    logger.info("Local feedback storage initialized")
+    return repository
 
 
 def configure_logging(log_path: Path) -> None:
