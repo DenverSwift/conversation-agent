@@ -13,10 +13,11 @@ class OpenAIReplyClient:
         self._model = model
 
     async def create_reply(self, *, instructions: str, messages: list[dict[str, str]]) -> str:
+        input_messages: Any = messages
         response: Any = await self._client.responses.create(
             model=self._model,
             instructions=instructions,
-            input=messages,
+            input=input_messages,
             store=False,
         )
         return str(getattr(response, "output_text", "") or "").strip()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Self
 
 
 class AlreadyRunningError(RuntimeError):
@@ -38,7 +39,7 @@ class SingleInstanceLock:
             except FileNotFoundError:
                 pass
 
-    def __enter__(self) -> "SingleInstanceLock":
+    def __enter__(self) -> Self:
         self.acquire()
         return self
 

@@ -22,7 +22,7 @@ class Settings:
     runtime_dir: Path = Path(".runtime")
 
     @classmethod
-    def load(cls, env_file: str | Path = ".env") -> "Settings":
+    def load(cls, env_file: str | Path = ".env") -> Settings:
         load_env_file(Path(env_file))
         return cls(
             telegram_api_id=_required_int("TELEGRAM_API_ID"),

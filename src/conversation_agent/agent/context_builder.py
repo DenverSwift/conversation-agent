@@ -67,7 +67,7 @@ def messages_for_openai(messages: list[ChatMessage]) -> list[dict[str, str]]:
     return [{"role": message.role, "content": message.content} for message in messages]
 
 
-def _message_order_key(message: Any) -> tuple[Any, int]:
+def _message_order_key(message: Any) -> tuple[bool, Any, int]:
     date = getattr(message, "date", None)
     message_id = getattr(message, "id", 0) or 0
     return (date is None, date or message_id, message_id)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 BEHAVIOR_HEADING = "Matvey communication behavior"
 
 

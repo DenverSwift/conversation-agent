@@ -20,12 +20,11 @@ class FakeClient:
         self.messages = messages
 
     async def iter_messages(self, peer: object, **kwargs: object):
-        limit = int(kwargs.get("limit", len(self.messages)))
-        yielded = 0
-        for message in sorted(self.messages, key=lambda item: item.id, reverse=True):
+        raw_limit = kwargs.get("limit")
+        limit = int(raw_limit) if isinstance(raw_limit, (int, str)) else len(self.messages)
+        for yielded, message in enumerate(sorted(self.messages, key=lambda item: item.id, reverse=True)):
             if yielded >= limit:
                 break
-            yielded += 1
             yield message
 
 

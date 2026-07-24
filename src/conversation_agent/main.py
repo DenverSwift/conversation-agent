@@ -62,7 +62,7 @@ async def run_agent() -> None:
         client = await create_telegram_client(settings)
         try:
             me = await client.get_me()
-            own_user_id = int(getattr(me, "id"))
+            own_user_id = int(me.id)
             instructions = build_instructions(settings.readme_path)
             reply_client = OpenAIReplyClient(
                 api_key=settings.openai_api_key,

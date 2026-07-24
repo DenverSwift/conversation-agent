@@ -11,7 +11,7 @@ from conversation_agent.telegram.handlers import handle_incoming_event
 async def create_telegram_client(settings: Settings) -> Any:
     from telethon import TelegramClient
 
-    client = TelegramClient(
+    client: Any = TelegramClient(
         settings.telegram_session_path,
         settings.telegram_api_id,
         settings.telegram_api_hash,

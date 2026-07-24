@@ -7,7 +7,6 @@ from pathlib import Path
 from conversation_agent.settings import Settings
 from conversation_agent.telegram.handlers import handle_incoming_event
 
-
 ALLOWED_USER_ID = 1751105897
 OWN_USER_ID = 42
 
@@ -25,8 +24,10 @@ class FakeClient:
         self.messages = messages
 
     async def iter_messages(self, peer: object, **kwargs: object):
-        limit = int(kwargs.get("limit", len(self.messages)))
-        min_id = int(kwargs.get("min_id", 0))
+        raw_limit = kwargs.get("limit")
+        limit = int(raw_limit) if isinstance(raw_limit, (int, str)) else len(self.messages)
+        raw_min_id = kwargs.get("min_id")
+        min_id = int(raw_min_id) if isinstance(raw_min_id, (int, str)) else 0
         yielded = 0
         for message in sorted(self.messages, key=lambda item: item.id, reverse=True):
             if message.id <= min_id:
