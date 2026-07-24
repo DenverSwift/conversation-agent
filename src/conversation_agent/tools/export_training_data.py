@@ -55,8 +55,9 @@ async def export_training_data() -> dict[str, Any]:
             if entity.__class__.__name__ != "User":
                 raise ValueError("Allowed Telegram ID must resolve to a private user")
             peer = await client.get_input_entity(entity)
-            print(f"[2/3] Чтение истории сообщений для пользователя ID={settings.allowed_telegram_user_id}...", file=sys.stderr)
-            messages = await _read_dialog_history(client, peer)
+            fetch_limit = max(settings.training_export_limit * 3, 500)
+            print(f"[2/3] Чтение последних {fetch_limit} сообщений для пользователя ID={settings.allowed_telegram_user_id}...", file=sys.stderr)
+            messages = await _read_dialog_history(client, peer, limit=fetch_limit)
             print(f"      Всего загружено сообщений из Telegram: {len(messages)}", file=sys.stderr)
             print("[3/3] Формирование обучающего датасета...", file=sys.stderr)
             examples, extraction_stats = build_training_examples(
@@ -85,9 +86,13 @@ async def export_training_data() -> dict[str, Any]:
             await client.disconnect()
 
 
-async def _read_dialog_history(client: Any, peer: Any) -> list[HistoryMessage]:
+async def _read_dialog_history(client: Any, peer: Any, limit: int | None = None) -> list[HistoryMessage]:
+    raw_messages: list[Any] = []
+    async for message in client.iter_messages(peer, limit=limit):
+        raw_messages.append(message)
+    raw_messages.sort(key=lambda m: getattr(m, "id", 0))
     messages: list[HistoryMessage] = []
-    async for message in client.iter_messages(peer, reverse=True):
+    for message in raw_messages:
         raw_text = getattr(message, "raw_text", None)
         text = raw_text.strip() if isinstance(raw_text, str) else ""
         messages.append(
@@ -102,8 +107,6 @@ async def _read_dialog_history(client: Any, peer: Any) -> list[HistoryMessage]:
                 is_forwarded=getattr(message, "fwd_from", None) is not None,
             )
         )
-        if len(messages) % 500 == 0:
-            print(f"      Загружено {len(messages)} сообщений...", file=sys.stderr)
     return messages
 
 
