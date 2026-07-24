@@ -30,6 +30,7 @@ def main() -> int:
 
 async def run_build(*, batch_size: int) -> dict[str, object]:
     settings = Settings.load()
+    print("[1/2] Загрузка исходного экспорта и базы отзывов...", file=sys.stderr)
     repository = None
     if settings.feedback_database_path.is_file():
         repository = SQLiteFeedbackRepository(settings.feedback_database_path)
@@ -39,7 +40,8 @@ async def run_build(*, batch_size: int) -> dict[str, object]:
         model=settings.style_analysis_model,
         timeout_seconds=settings.openai_timeout_seconds,
     )
-    return await build_style_bundle(
+    print(f"[2/2] Компиляция профиля стиля и банка примеров в {settings.style_bundle_directory}...", file=sys.stderr)
+    summary = await build_style_bundle(
         source_path=settings.style_source_examples_path,
         output_directory=settings.style_bundle_directory,
         contact_id=settings.allowed_telegram_user_id,
@@ -49,6 +51,12 @@ async def run_build(*, batch_size: int) -> dict[str, object]:
         feedback_records=repository.reviewed_replies() if repository else (),
         batch_size=batch_size,
     )
+    print(
+        f"Успешно скомпилирован бандл стиля! Примеров в банке: {summary.get('example_count', 0)}, "
+        f"сохранено в {settings.style_bundle_directory}",
+        file=sys.stderr,
+    )
+    return summary
 
 
 if __name__ == "__main__":

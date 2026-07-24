@@ -46,6 +46,7 @@ async def export_training_data() -> dict[str, Any]:
 
     with SingleInstanceLock(settings.runtime_dir):
         known_ai_ids = _known_ai_ids(settings)
+        print("[1/3] Подключение к Telegram...", file=sys.stderr)
         client = await create_telegram_client(settings)
         try:
             me = await client.get_me()
@@ -54,7 +55,10 @@ async def export_training_data() -> dict[str, Any]:
             if entity.__class__.__name__ != "User":
                 raise ValueError("Allowed Telegram ID must resolve to a private user")
             peer = await client.get_input_entity(entity)
+            print(f"[2/3] Чтение истории сообщений для пользователя ID={settings.allowed_telegram_user_id}...", file=sys.stderr)
             messages = await _read_dialog_history(client, peer)
+            print(f"      Всего загружено сообщений из Telegram: {len(messages)}", file=sys.stderr)
+            print("[3/3] Формирование обучающего датасета...", file=sys.stderr)
             examples, extraction_stats = build_training_examples(
                 messages,
                 dialog_id=settings.allowed_telegram_user_id,
@@ -63,7 +67,7 @@ async def export_training_data() -> dict[str, Any]:
                 limit=settings.training_export_limit,
                 context_limit=settings.training_export_context_limit,
             )
-            return write_training_exports(
+            summary = write_training_exports(
                 output_directory=settings.training_export_directory,
                 raw_examples=examples,
                 extraction_stats=extraction_stats,
@@ -71,6 +75,12 @@ async def export_training_data() -> dict[str, Any]:
                 export_limit=settings.training_export_limit,
                 context_limit=settings.training_export_context_limit,
             )
+            print(
+                f"Успешно экспортировано! Исходных примеров: {summary.get('raw_example_count', 0)}, "
+                f"очищенных: {summary.get('cleaned_example_count', 0)} -> {settings.training_export_directory}",
+                file=sys.stderr,
+            )
+            return summary
         finally:
             await client.disconnect()
 
@@ -92,6 +102,8 @@ async def _read_dialog_history(client: Any, peer: Any) -> list[HistoryMessage]:
                 is_forwarded=getattr(message, "fwd_from", None) is not None,
             )
         )
+        if len(messages) % 500 == 0:
+            print(f"      Загружено {len(messages)} сообщений...", file=sys.stderr)
     return messages
 
 
