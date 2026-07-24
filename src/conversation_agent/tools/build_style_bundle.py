@@ -50,6 +50,7 @@ async def run_build(*, batch_size: int) -> dict[str, object]:
         analysis_model=settings.style_analysis_model,
         feedback_records=repository.reviewed_replies() if repository else (),
         batch_size=batch_size,
+        verbose=True,
     )
     print(
         f"Успешно скомпилирован бандл стиля! Примеров в банке: {summary.get('example_count', 0)}, "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -38,6 +39,7 @@ async def build_style_bundle(
     analysis_model: str,
     feedback_records: Sequence[GeneratedReplyRecord] = (),
     batch_size: int = 25,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     if source_limit <= 0 or batch_size <= 0:
         raise ValueError("Style source limit and batch size must be positive")
@@ -62,11 +64,17 @@ async def build_style_bundle(
         source_examples[index : index + batch_size]
         for index in range(0, len(source_examples), batch_size)
     ]
+    if verbose:
+        print(f"      Найдено примеров для анализа: {len(source_examples)} (Батчей: {len(batches)})", file=sys.stderr)
     for batch_number, batch in enumerate(batches, start=1):
+        if verbose:
+            print(f"      [Батч {batch_number}/{len(batches)}] Анализ {len(batch)} примеров стиля через OpenAI...", file=sys.stderr)
         batch_rules = await analyzer.analyze_batch(batch, batch_number=batch_number)
         if not batch_rules:
             raise ValueError(f"Style analysis batch {batch_number} returned no rules")
         observations.extend(batch_rules)
+    if verbose:
+        print("      Объединение и систематизация правил стиля...", file=sys.stderr)
     merged_rules = await analyzer.merge_rules(observations)
     if not merged_rules:
         raise ValueError("Style rule merge returned no rules")
