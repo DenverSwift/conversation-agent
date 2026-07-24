@@ -146,7 +146,10 @@ def register_handlers(application: Any, service: TrainerService, repository: Any
             await query.answer("Action unavailable", show_alert=True)
             return
         result = service.handle_callback(query.data or "")
-        await query.answer(result.callback_notice)
+        try:
+            await query.answer(result.callback_notice)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Callback query answer skipped: %s", exc)
         await _apply_result(update, result, service, repository)
 
     async def text(update: Any, context: Any) -> None:
@@ -220,21 +223,27 @@ async def _apply_result(
         markup = None
     query = update.callback_query
     if query is not None and query.message is not None:
-        await query.edit_message_text(
-            review_card(record),
-            parse_mode="HTML",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
+        try:
+            await query.edit_message_text(
+                review_card(record),
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Callback query edit message skipped: %s", exc)
     elif record.trainer_review_chat_id and record.trainer_review_message_id:
-        await update.get_bot().edit_message_text(
-            chat_id=record.trainer_review_chat_id,
-            message_id=record.trainer_review_message_id,
-            text=review_card(record),
-            parse_mode="HTML",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
+        try:
+            await update.get_bot().edit_message_text(
+                chat_id=record.trainer_review_chat_id,
+                message_id=record.trainer_review_message_id,
+                text=review_card(record),
+                parse_mode="HTML",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Bot edit message skipped: %s", exc)
 
 
 async def _wait_for_stop_file(stop_path: Path) -> None:
