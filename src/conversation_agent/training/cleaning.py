@@ -1,4 +1,4 @@
-"""Conservative deterministic cleaning for local training exports."""
+"""Conservative deterministic cleaning for provider-independent exports."""
 
 from __future__ import annotations
 

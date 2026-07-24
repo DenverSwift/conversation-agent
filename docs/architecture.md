@@ -27,16 +27,56 @@ When feedback is enabled, the generated reply record is created before Telegram 
 
 Telegram delivery and SQLite cannot share one atomic transaction. A failure after Telegram accepts a message but before its returned ID is persisted is logged without private text and requires manual dataset review.
 
-## Future personalization layers
+## Current generation path
 
-The intended order is:
+The implemented AAA.3 runtime path is:
 
-1. Global Matvey style.
-2. Per-contact communication profile.
-3. Current conversation tone.
-4. Relevant real examples.
-5. Future fine-tuning based only on reviewed data.
+```text
+incoming message
+-> global Matvey behavior loaded from README
+-> up to 30 recent Telegram messages
+-> configured OpenAI base model
+-> Telegram reply
+```
 
-These layers, contact classification, embeddings, fine-tuning, and automatic retraining are not implemented in `AAA.3`.
+The runtime does not read `raw_examples.jsonl`, `cleaned_examples.jsonl`, or
+feedback export files. It does not retrieve Fix corrections. Therefore, the
+configured export limit of 500 has no effect on generation today.
 
-No architecture decisions are final until documented in `docs/decisions/`.
+## AA.1 runtime style adaptation
+
+Dynamic few-shot retrieval is an AA.1 implementation requirement:
+
+```text
+incoming message
+-> global Matvey style profile
+-> contact-specific real human examples
+-> high-priority relevant Fix corrections
+-> recent conversation with provenance
+-> configured OpenAI base model
+-> Telegram reply
+```
+
+AA.1 must select a small set of relevant examples rather than sending the
+complete 500-message dataset on every request. Selection and prompt assembly
+must preserve provenance so the application can enforce these evidence rules:
+
+- only real human-authored Matvey messages are style evidence;
+- AI-generated replies are never style evidence, even when approved;
+- rejected replies are never positive examples;
+- corrected Fix replies are human-authored evidence and have the highest
+  retrieval priority;
+- recent conversation remains conversation context, not automatically style
+  evidence;
+- the configured base model is used without modifying its weights.
+
+Feedback collection, dataset export, runtime retrieval, and model training are
+separate concerns. The exporters remain provider-independent and may support
+retrieval, evaluation, prompt development, or optional future training of an
+open-weight model. They do not upload files or create hosted models.
+
+OpenAI is winding down self-service fine-tuning, so an OpenAI-hosted custom
+model is not part of the roadmap. See
+[`adr/0001-runtime-style-adaptation.md`](adr/0001-runtime-style-adaptation.md).
+
+No architecture decisions are final until documented in `docs/adr/`.

@@ -1,4 +1,4 @@
-# Local Feedback and Data Exports
+# Local Feedback and Provider-Independent Data Exports
 
 ## Local-only storage
 
@@ -73,6 +73,10 @@ export_summary.json
 
 The summary contains aggregate counts only, never conversation text.
 
+`TRAINING_EXPORT_LIMIT=500` is an export bound, not a runtime prompt size. The
+current agent does not load these files during generation, and the complete
+dataset must not be sent on every request when AA.1 retrieval is implemented.
+
 ## Reviewed feedback export
 
 Run:
@@ -87,7 +91,33 @@ or:
 uv run python -m conversation_agent.tools.export_feedback
 ```
 
-The export contains all reviewed records plus separate positive and negative files. Approved replies and `/fix` corrections can appear as positive targets. For corrected records, the correction is the preferred target. Rejected replies without corrections never become positive supervised examples.
+The export contains all reviewed records plus separate positive and negative
+files. For compatibility, approved generated replies and `/fix` corrections
+can appear in the positive export. For corrected records, the human correction
+is the preferred target. Rejected replies without corrections never enter the
+positive file.
+
+The positive file is not automatically a style-evidence index. AA.1 retrieval
+must use only real Matvey-authored messages and corrected Fix replies as
+positive style evidence. Approved AI-generated replies may remain useful for
+evaluation or preference analysis, but must never teach Matvey's style.
+
+## Separate data stages
+
+- **Feedback collection** records Good, Bad, Fix, and Should not reply decisions
+  in local SQLite.
+- **Dataset export** writes provider-independent JSONL for inspection and
+  downstream tools.
+- **Runtime few-shot adaptation** will select a small relevant subset for each
+  AA.1 request; it is not implemented in AAA.3.
+- **Optional future training** may use an open-weight model or another
+  provider-independent workflow after explicit review. It is not required for
+  AA.1.
+
+Exported datasets are useful for runtime example retrieval, evaluation, prompt
+development, and possible future open-weight model training. The exporter does
+not upload JSONL, call a training API, create an `ft:` model, or change model
+weights.
 
 ## Cleaning and privacy
 
@@ -95,7 +125,8 @@ Cleaning removes empty targets, link-only targets, bot commands, forwarded targe
 
 When `TRAINING_EXPORT_REDACT_PII=true`, obvious email addresses, phone numbers, sensitive-query URLs, and token-like secrets are replaced with placeholders. This is conservative pattern matching, not complete anonymization. Personal names cannot be anonymized reliably and may remain in context or replies.
 
-Exports must be reviewed manually before any future training, sharing, or upload.
+Exports must be reviewed manually before retrieval indexing, evaluation,
+sharing, or any optional future open-weight training.
 
 ## Deleting local data
 

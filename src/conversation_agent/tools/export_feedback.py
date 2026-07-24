@@ -1,4 +1,4 @@
-"""Export explicitly reviewed local feedback records."""
+"""Export provider-independent, explicitly reviewed feedback records."""
 
 from __future__ import annotations
 
@@ -13,7 +13,10 @@ from conversation_agent.training.feedback_export import write_feedback_exports
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Export approved, corrected, and rejected local feedback."
+        description=(
+            "Export provider-independent feedback JSONL for retrieval, evaluation, "
+            "and prompt development."
+        )
     )
     parser.parse_args()
     try:

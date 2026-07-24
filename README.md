@@ -21,7 +21,7 @@ conversation-agent/
 |   |-- architecture.md
 |   |-- roadmap.md
 |   |-- versioning.md
-|   `-- decisions/
+|   `-- adr/
 |-- prompts/
 |-- src/conversation_agent/
 |   |-- storage/
@@ -38,6 +38,30 @@ conversation-agent/
 ## Current Status
 
 Release `AAA.3`: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies are stored in local SQLite, reviewed through a separate private trainer bot, and available to the existing local export tools.
+
+The current runtime does not load exported datasets or Fix corrections during
+generation. It uses the global behavior section below plus up to 30 recent
+Telegram messages and sends that context to the configured OpenAI base model.
+
+## AA.1 Runtime Adaptation
+
+AA.1 must implement provider-independent dynamic few-shot retrieval:
+
+```text
+incoming message
+-> global Matvey style profile
+-> contact-specific real human examples
+-> high-priority relevant Fix corrections
+-> recent conversation with provenance
+-> configured OpenAI base model
+-> Telegram reply
+```
+
+The complete 500-example export is not sent on every request. AA.1 will select
+only a small relevant set. AI-generated replies are never style evidence,
+rejected replies are never positive examples, and human-authored Fix
+corrections have the highest retrieval priority. This changes request context,
+not model weights.
 
 ## Versioning
 
@@ -85,7 +109,8 @@ allowed contact. `FEEDBACK_SAVED_MESSAGES_ENABLED` is retained only as a
 deprecated compatibility setting; AAA.3 does not register Saved Messages
 feedback commands or create cards there.
 
-History and reviewed-feedback exports are written only under `.runtime/exports/`:
+Provider-independent history and reviewed-feedback exports are written only
+under `.runtime/exports/`:
 
 ```bat
 scripts\export_training_data.bat
@@ -95,4 +120,7 @@ scripts\export_feedback.bat
 See [docs/trainer-bot.md](docs/trainer-bot.md) for setup and operating details,
 and [docs/feedback-and-exports.md](docs/feedback-and-exports.md) for data
 handling, grouping, cleaning, deletion, and privacy. Every exported dataset
-requires manual review before any future training.
+requires manual review. Datasets remain useful for runtime example retrieval,
+evaluation, prompt development, and possible future training of open-weight
+models. They are not an instruction or supported workflow for uploading JSONL
+to OpenAI to obtain a custom hosted model.

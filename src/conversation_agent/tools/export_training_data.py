@@ -1,4 +1,4 @@
-"""Export human-authored Telegram replies for local manual review."""
+"""Export provider-independent human-authored Telegram style examples."""
 
 from __future__ import annotations
 
@@ -22,7 +22,10 @@ from conversation_agent.training.models import HistoryMessage
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Export real Matvey-authored replies from the allowed private Telegram dialog."
+        description=(
+            "Export provider-independent Matvey-authored examples for retrieval, "
+            "evaluation, and prompt development."
+        )
     )
     parser.parse_args()
     try:
@@ -31,7 +34,7 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001
-        print(f"Training export failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"Dataset export failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(summary, sort_keys=True))
     return 0

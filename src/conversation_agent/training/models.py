@@ -1,4 +1,4 @@
-"""Models used by Telegram history and feedback exports."""
+"""Models used by provider-independent Telegram and feedback exports."""
 
 from __future__ import annotations
 

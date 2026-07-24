@@ -1,4 +1,4 @@
-"""Export explicitly reviewed feedback without creating training jobs."""
+"""Export provider-independent feedback without uploading or training."""
 
 from __future__ import annotations
 

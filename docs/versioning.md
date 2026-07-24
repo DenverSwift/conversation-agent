@@ -28,7 +28,7 @@ Examples:
 - `AAA.1` is the initial Telegram reply MVP.
 - `AAA.2` adds feedback collection and training-data exports.
 - `AAA.3` moves feedback review to a separate private trainer bot.
-- `AA.1` introduces the base personality capability.
+- `AA.1` introduces base personality through runtime few-shot retrieval.
 - `AA.2` improves prompts within that same capability.
 - `A.1` introduces per-contact adaptation.
 
