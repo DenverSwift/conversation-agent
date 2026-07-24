@@ -241,8 +241,8 @@ def test_style_runtime_includes_rules_contact_manual_and_provenance(tmp_path: Pa
     assert "Use observed pattern" in composed.instructions
     assert f'"contact_id": {CONTACT_ID}' in composed.instructions
     assert "RELEVANT REAL EXAMPLES" in composed.instructions
-    assert composed.messages[0]["content"].startswith("[provenance=ai_generated]")
-    assert composed.messages[-1]["content"].startswith("[provenance=contact]")
+    assert composed.messages[0]["content"] == "old ai"
+    assert composed.messages[-1]["content"] == "incoming 4"
 
 
 def test_immediate_fix_is_retrieved_without_rebuild(tmp_path: Path) -> None:

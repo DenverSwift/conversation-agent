@@ -118,7 +118,7 @@ def _budget_recent_messages(
     rendered = [
         {
             "role": message.role,
-            "content": f"[provenance={message.provenance}] {message.content}",
+            "content": message.content,
         }
         for message in messages
     ]
