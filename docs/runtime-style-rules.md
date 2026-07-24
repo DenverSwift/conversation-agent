@@ -1,17 +1,20 @@
-# AA.1 Runtime Matvey Behavior Rules
+# AA.2 Runtime Matvey Behavior Rules
 
-AA.1 adapts the configured base model at request time. It does not upload a
-fine-tuning dataset or modify model weights.
+AA.2 adapts the configured base model at request time. It does not upload a
+fine-tuning dataset or modify model weights. It extends AA.1 with a private,
+incremental compiler so unchanged evidence is analyzed once per runtime device.
 
 ## Data flow
 
 ```text
-up to 500 real Matvey examples + reviewed local feedback
--> staged offline style compiler
--> .runtime/style/matvey_behavior_rules.md
--> .runtime/style/style_profile.json
--> .runtime/style/example_bank.jsonl
--> .runtime/style/contacts/1751105897.json
+current private sources
+-> canonical source keys and SHA-256 content hashes
+-> compare with .runtime/style/compiler_state.sqlite3
+-> reuse unchanged and duplicate-content observations
+-> analyze only new and modified unique evidence
+-> remove deleted and superseded contributions
+-> deterministic observation merge
+-> complete runtime bundle
 
 incoming message
 -> core identity and safety
@@ -24,15 +27,11 @@ incoming message
 -> Telegram reply
 ```
 
-The rulebook is analogous to persistent project instructions such as
-`AGENTS.md`: it converts repeated observed behavior into compact, high-priority
-instructions included in every style-enabled request. The compiler analyzes all
-qualifying source examples in bounded batches, merges every batch observation,
-and writes artifacts only after the complete build succeeds.
+The complete export is never sent on every runtime request. Compilation and
+runtime retrieval are separate: the compiler may inspect up to 500 local
+examples offline, while live retrieval selects only a small relevant set.
 
-## Setup
-
-Configure `.env`:
+## Configuration
 
 ```dotenv
 STYLE_ADAPTATION_ENABLED=true
@@ -43,10 +42,18 @@ STYLE_RETRIEVAL_LIMIT=8
 STYLE_RULES_MAX_CHARS=12000
 STYLE_EXAMPLES_MAX_CHARS=10000
 STYLE_REQUIRE_BUNDLE=true
-PROMPT_VERSION=AA.1
+STYLE_INCREMENTAL_COMPILATION=true
+STYLE_COMPILER_STATE_PATH=.runtime/style/compiler_state.sqlite3
+STYLE_ANALYSIS_BATCH_SIZE=50
+PROMPT_VERSION=AA.2
 ```
 
-Then run on the device that has the Telegram session and private conversation:
+Incremental compilation is enabled by default. Disabling it does not silently
+fall back to a costly corpus rebuild; an explicit `--full-rebuild` is required.
+
+## Build commands
+
+Export private human examples, build, inspect, and start:
 
 ```bat
 scripts\export_training_data.bat
@@ -55,30 +62,88 @@ scripts\inspect_style_runtime.bat
 scripts\start_agent.bat
 ```
 
-`build_style_bundle` uses the configured OpenAI analysis model with
-`store=False`. It sends private source batches only for the explicit local
-rulebook build. It never logs source text or summaries.
+Preview aggregate work without displaying conversation text:
 
-If `STYLE_REQUIRE_BUNDLE=true`, startup fails with the exact build command when
-artifacts are missing. Set `STYLE_ADAPTATION_ENABLED=false` to preserve the
-previous AAA.3 prompt path.
+```bat
+scripts\build_style_bundle.bat --dry-run
+```
+
+Show safe local state and pending counts:
+
+```bat
+scripts\build_style_bundle.bat --status
+```
+
+Explicitly discard compatible cached interpretation and reanalyze unique
+sources:
+
+```bat
+scripts\build_style_bundle.bat --full-rebuild
+```
+
+The full rebuild prints a warning and may use significantly more time and API
+tokens. It is never triggered automatically.
+
+Regenerate artifacts from unchanged compatible cached observations:
+
+```bat
+scripts\build_style_bundle.bat --force-resynthesize
+```
+
+## Source identity and comparison
+
+Telegram sources use stable message identities such as
+`telegram:<dialog_id>:<message_ids>`. Feedback uses identities such as
+`feedback:<reply_id>:fix`. The content hash is deterministic JSON over
+normalized style-relevant fields: source type, contact, incoming text, reply or
+correction, feedback state, relevant context, provenance, and evidence
+polarity. Timestamps and file modification times do not define identity.
+
+Each build classifies sources as unchanged, new, modified, deleted, invalid, or
+duplicate content:
+
+- unchanged sources reuse their cached observations;
+- new and modified unique content is analyzed in bounded delta batches;
+- modified old contributions are replaced;
+- deleted contributions are removed without reanalyzing unchanged text;
+- another source with an already analyzed content hash reuses that analysis;
+- repeated evidence still adds a supporting source and increases rule
+  confidence without creating duplicate prose.
+
+An identical build performs zero OpenAI calls, consumes zero analysis tokens,
+does not rewrite bundle artifacts, and reports `build_mode=no_op`.
+
+## Compiler state and fingerprint
+
+`.runtime/style/compiler_state.sqlite3` contains the state schema version,
+compiler and normalization versions, analyzer prompt and model fingerprint,
+per-source hashes, structured observations, provenance, contribution IDs,
+timestamps, content-hash cache, and last successful bundle ID.
+
+The analysis fingerprint covers every setting that changes interpretation,
+including the analyzer model and prompt template, observation schema, compiler
+and normalization versions, batch size, and evidence policy. A mismatch stops
+before any API call and requests an explicit `--full-rebuild`.
+
+Existing AA.1 bundle files without compiler state remain usable until a build is
+requested. Their first AA.2 build is an initial full build. The old bundle and
+state remain untouched if that analysis fails.
 
 ## Evidence policy
 
 - Real outgoing Matvey messages are positive style evidence.
-- Human-authored Fix corrections are positive evidence with highest priority
-  and become searchable immediately without a bundle rebuild.
-- Approved AI replies remain evaluation data but are not Matvey style evidence.
-- Bad and `should_not_reply` records are explicitly negative evidence.
-- AI-generated recent messages may remain for conversation continuity but carry
-  `ai_generated` provenance.
-- Profanity, slang, misspellings, lowercase text, informal grammar, fragments,
-  and unusual punctuation are preserved when present in real evidence.
+- Human-authored Fix corrections are positive evidence with highest priority.
+- Approved AI replies remain evaluation data, never Matvey style evidence.
+- Bad and `should_not_reply` records are negative evidence.
+- AI-generated recent messages retain `ai_generated` provenance.
+- Slang, profanity, misspellings, lowercase text, fragments, and unusual
+  punctuation are preserved when supported by real evidence.
 
-Retrieval uses deterministic weighted token similarity plus contact, intent,
-profanity, recency, and feedback-source bonuses. It selects eight examples by
-default, deduplicates them, and ranks Fix corrections highest. It does not
-require embeddings and never sends the full 500-example bank per request.
+Structured observations include behavior category, normalized instruction,
+context and contact scope, confidence, polarity, source priority, and
+supporting source keys and hashes. Final rules are rendered deterministically
+from all currently valid observations, so obsolete behavior disappears when
+its final supporting source disappears.
 
 ## Prompt priority and safety
 
@@ -91,21 +156,12 @@ require embeddings and never sends the full 500-example bank per request.
 
 The model may follow evidenced ordinary profanity, slang, reciprocal teasing,
 and short reciprocal insults. It must not invent genuine threats, blackmail,
-doxxing, hate-based abuse, or sustained harassment. It must not blindly mirror
-every insult.
-
-Optional manual overrides are never overwritten during rebuilds. Examples:
-
-```markdown
-- Matvey may use profanity with this contact.
-- Do not respond like a therapist.
-- Do not use exclamation marks in routine greetings.
-- On "Дарова", do not answer "Привет! Как дела?" unless context requires it.
-```
+doxxing, hate-based abuse, or sustained harassment. Manual overrides are never
+overwritten during compilation.
 
 ## Inspection and evaluation
 
-Safe metadata inspection:
+Safe metadata inspection does not print rules or conversations:
 
 ```bat
 scripts\inspect_style_runtime.bat
@@ -127,9 +183,26 @@ scripts\evaluate_style.bat
 Automatic metrics are supporting evidence only and cannot establish
 human-level imitation.
 
+## Failure safety
+
+Analysis and artifact generation happen before publication. Bundle files and a
+replacement SQLite state are written to temporary paths and atomically
+replaced with rollback protection. A failed delta does not mark sources as
+compiled and does not publish a partial rulebook; the same delta remains
+pending on the next run.
+
+`build_summary.json` contains aggregate counts, fingerprints, request counts,
+available token usage, and artifact hashes. It contains no conversation text.
+Token numbers are omitted when the provider does not report them.
+
 ## Multi-device privacy
 
-`.env`, Telegram sessions, exports, SQLite, style artifacts, manual overrides,
-and evaluation results are ignored by Git. They do not synchronize between
-devices. Rebuild the bundle on each runtime device or copy it through a
-separately secured private channel.
+Application code synchronizes through GitHub. `.env`, Telegram sessions,
+exports, feedback SQLite, compiler state, cached observations, generated style
+files, manual overrides, and evaluation results do not.
+
+Each device maintains its own successful compiler state. A new device performs
+one initial build and later builds are incremental. Copying only rulebook files
+without the matching compiler state is insufficient. Trusted devices may use a
+secure private backup or transfer of the complete `.runtime/style/` directory.
+None of this private data belongs in Git, and AA.2 adds no cloud synchronization.

@@ -25,7 +25,7 @@ from conversation_agent.style.runtime import StyleRuntime
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Compare generic and AA.1 style prompt variants locally."
+        description="Compare generic and AA.2 style prompt variants locally."
     )
     parser.add_argument(
         "--output",
@@ -48,6 +48,7 @@ async def run_evaluation(output_path: Path) -> dict[str, Any]:
     bundle = load_style_bundle(
         settings.style_bundle_directory,
         contact_id=settings.allowed_telegram_user_id,
+        state_path=settings.style_compiler_state_path,
     )
     repository = None
     if settings.feedback_database_path.is_file():

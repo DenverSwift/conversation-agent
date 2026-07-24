@@ -1,4 +1,4 @@
-"""Inspect AA.1 runtime metadata without exposing private content by default."""
+"""Inspect AA.2 runtime metadata without exposing private content by default."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from conversation_agent.style.runtime import StyleRuntime
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Inspect safe AA.1 style runtime metadata."
+        description="Inspect safe AA.2 style runtime metadata."
     )
     parser.add_argument(
         "--show-private-content",
@@ -28,6 +28,7 @@ def main() -> int:
         bundle = load_style_bundle(
             settings.style_bundle_directory,
             contact_id=settings.allowed_telegram_user_id,
+            state_path=settings.style_compiler_state_path,
         )
         repository = None
         if settings.feedback_database_path.is_file():

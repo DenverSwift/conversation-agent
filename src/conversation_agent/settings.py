@@ -21,7 +21,7 @@ class Settings:
     feedback_enabled: bool = True
     feedback_database_path: Path = Path(".runtime/feedback.sqlite3")
     feedback_saved_messages_enabled: bool = False
-    prompt_version: str = "AA.1"
+    prompt_version: str = "AA.2"
     trainer_bot_enabled: bool = False
     trainer_bot_token: str | None = field(default=None, repr=False)
     trainer_telegram_user_id: int | None = None
@@ -39,6 +39,11 @@ class Settings:
     style_rules_max_chars: int = 12000
     style_examples_max_chars: int = 10000
     style_require_bundle: bool = True
+    style_incremental_compilation: bool = True
+    style_compiler_state_path: Path = Path(
+        ".runtime/style/compiler_state.sqlite3"
+    )
+    style_analysis_batch_size: int = 50
     log_path: Path = Path("logs/agent.log")
     runtime_dir: Path = Path(".runtime")
 
@@ -79,7 +84,7 @@ class Settings:
                 "FEEDBACK_SAVED_MESSAGES_ENABLED",
                 default=False,
             ),
-            prompt_version=_with_default("PROMPT_VERSION", "AA.1"),
+            prompt_version=_with_default("PROMPT_VERSION", "AA.2"),
             trainer_bot_enabled=trainer_enabled,
             trainer_bot_token=trainer_token,
             trainer_telegram_user_id=trainer_user_id,
@@ -124,6 +129,20 @@ class Settings:
                 10000,
             ),
             style_require_bundle=_boolean("STYLE_REQUIRE_BUNDLE", default=True),
+            style_incremental_compilation=_boolean(
+                "STYLE_INCREMENTAL_COMPILATION",
+                default=True,
+            ),
+            style_compiler_state_path=Path(
+                _with_default(
+                    "STYLE_COMPILER_STATE_PATH",
+                    ".runtime/style/compiler_state.sqlite3",
+                )
+            ),
+            style_analysis_batch_size=_positive_int_with_default(
+                "STYLE_ANALYSIS_BATCH_SIZE",
+                50,
+            ),
         )
 
 

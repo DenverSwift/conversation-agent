@@ -4,7 +4,10 @@ An AI communication agent that understands personal context, mimics a user's com
 
 ## Purpose
 
-`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AA.1` adds persistent runtime Matvey behavior rules and dynamic local example retrieval without modifying model weights.
+`conversation-agent` is a local Python application that replies in one allowed
+private Telegram dialog through Telethon and the OpenAI API. Release `AA.2`
+keeps the AA.1 runtime personality and adds incremental, device-local style
+compilation without modifying model weights.
 
 ## Repository Structure
 
@@ -39,14 +42,15 @@ conversation-agent/
 
 ## Current Status
 
-Release `AA.1`: the agent remains restricted to Telegram user `1751105897`.
+Release `AA.2`: the agent remains restricted to Telegram user `1751105897`.
 Generated replies and trainer feedback stay in local SQLite. A compiled local
 rulebook is included in each style-enabled model request, and a small relevant
 set of real Matvey examples and Fix corrections is retrieved dynamically.
 
-## AA.1 Runtime Adaptation
+## AA.2 Runtime Adaptation
 
-AA.1 implements provider-independent dynamic few-shot retrieval:
+AA.2 uses the provider-independent dynamic few-shot retrieval introduced in
+AA.1:
 
 ```text
 incoming message
@@ -59,7 +63,12 @@ incoming message
 ```
 
 The complete 500-example export is analyzed offline and is not sent on every
-request. Runtime selects only a small relevant set. AI-generated replies are never style evidence,
+request. The compiler stores structured per-source observations in
+`.runtime/style/compiler_state.sqlite3`. Later builds hash the current sources,
+reuse unchanged analysis, and send only new or modified evidence to OpenAI.
+An identical second build is a no-op with zero analysis requests.
+
+Runtime selects only a small relevant set. AI-generated replies are never style evidence,
 rejected replies are never positive examples, and human-authored Fix
 corrections have the highest retrieval priority. This changes request context,
 not model weights.
@@ -70,7 +79,10 @@ request. Original examples remain in a private local example bank.
 
 ## Versioning
 
-Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AA.1`: `AA` identifies the base-personality capability stage, while `.1` identifies its first engineering iteration.
+Conversation Agent uses an internal Cup Size progression instead of semantic
+milestone versions. The current release is `AA.2`: `AA` identifies the
+base-personality capability stage, while `.2` identifies its incremental
+compiler engineering iteration.
 
 See [docs/versioning.md](docs/versioning.md) for the complete progression, rules, roadmap, and examples.
 
@@ -91,7 +103,7 @@ See [docs/versioning.md](docs/versioning.md) for the complete progression, rules
 5. Open the bot from the configured trainer account and send `/start`.
 6. Run `scripts\start_trainer_bot.bat` in a second terminal.
 
-For AA.1 style adaptation, prepare local private artifacts before starting the
+For AA.2 style adaptation, prepare local private artifacts before starting the
 agent:
 
 ```bat
@@ -100,9 +112,22 @@ scripts\build_style_bundle.bat
 scripts\inspect_style_runtime.bat
 ```
 
-The export and style bundle are intentionally not synchronized by Git. Build
-them on every runtime device that has the Telegram session and private data, or
-copy them through a separately secured private channel.
+Useful compiler controls:
+
+```bat
+scripts\build_style_bundle.bat --dry-run
+scripts\build_style_bundle.bat --status
+scripts\build_style_bundle.bat --full-rebuild
+```
+
+`--full-rebuild` is the only mode that intentionally reanalyzes the complete
+unique corpus. It is required after an analyzer fingerprint change and may use
+substantial API tokens.
+
+The export, generated bundle, and compiler state are intentionally not
+synchronized by Git. Build them on every runtime device that has the Telegram
+session and private data, or securely transfer the complete
+`.runtime/style/` directory between trusted devices.
 
 Use `scripts\stop_agent.bat` and `scripts\stop_trainer_bot.bat` for clean shutdown.
 
@@ -136,7 +161,7 @@ scripts\export_feedback.bat
 ```
 
 See [docs/trainer-bot.md](docs/trainer-bot.md) for setup and operating details,
-[docs/runtime-style-rules.md](docs/runtime-style-rules.md) for AA.1 style setup,
+[docs/runtime-style-rules.md](docs/runtime-style-rules.md) for AA.2 style setup,
 and [docs/feedback-and-exports.md](docs/feedback-and-exports.md) for data
 handling, grouping, cleaning, deletion, and privacy. Every exported dataset
 requires manual review. Datasets remain useful for runtime example retrieval,

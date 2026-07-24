@@ -1,4 +1,4 @@
-"""Live AA.1 style adaptation orchestration."""
+"""Live AA.2 style adaptation orchestration."""
 
 from __future__ import annotations
 

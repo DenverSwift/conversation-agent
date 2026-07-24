@@ -9,6 +9,21 @@ from typing import Any
 
 from conversation_agent.style.models import StyleExample, StyleRule
 
+ANALYZER_PROMPT_VERSION = "AA.2-observations-v1"
+ANALYZER_PROMPT_TEMPLATE = (
+    "Analyze observable Telegram writing behavior only. Preserve slang, profanity, "
+    "misspellings, lowercase text, fragments, and unusual punctuation as evidence. "
+    "Cover reply length, punctuation, greetings, acknowledgements, profanity, reciprocal "
+    "teasing, disagreement, scheduling, formality, and generic assistant phrase avoidance. "
+    "Positive records are style evidence. Negative records describe behavior that must not "
+    "be copied. Evaluation records are AI-generated and must never establish Matvey style. "
+    "Do not infer sensitive traits. Return JSON with a rules array. Each rule must include "
+    "observation_id, behavior_category, text, applicable_context, scope, confidence, "
+    "supporting_source_keys, supporting_source_hashes, polarity, source_type, "
+    "source_priority, and evidence_count. Supporting identifiers must come from the input. "
+    "Rules must be concrete behavior instructions, never vague personality labels."
+)
+
 
 class OpenAIStyleAnalyzer:
     def __init__(
@@ -24,6 +39,9 @@ class OpenAIStyleAnalyzer:
         self._client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds)
         self._model = model
         self._max_attempts = max_attempts
+        self.request_count = 0
+        self.input_tokens_used: int | None = 0
+        self.output_tokens_used: int | None = 0
 
     async def analyze_batch(
         self,
@@ -32,26 +50,8 @@ class OpenAIStyleAnalyzer:
         batch_number: int,
     ) -> list[StyleRule]:
         payload = [example.to_dict() for example in examples]
-        instructions = (
-            "Analyze observable Telegram writing behavior only. Preserve slang, profanity, "
-            "misspellings, lowercase text, fragments, and unusual punctuation as evidence. "
-            "Cover response length, sentence count, capitalization, punctuation, final "
-            "periods, greetings, acknowledgements, slang, profanity, reciprocal insults, "
-            "teasing, emoji frequency, directness, formality, openings, endings, disagreement, "
-            "aggression, scheduling, vague questions, frequent and avoided phrases, and "
-            "friendly versus business communication. Describe contact tone, forms of address, "
-            "and whether terse or aggressive exchanges appear reciprocal when evidence supports "
-            "it. Positive records are style evidence. Negative records describe failed behavior "
-            "that must not be copied or converted into positive rules. Evaluation records are "
-            "AI-generated approvals and may describe outcome quality, but must never establish "
-            "Matvey-authored style. "
-            "Do not infer sensitive psychological traits. Return JSON with a rules array. "
-            "Each rule must have text, confidence from 0 to 1, evidence_count, source_type, "
-            "applicable_context, and scope (global or contact). Rules must be concrete "
-            "behavior instructions, never vague personality labels."
-        )
         result = await self._request_json(
-            instructions=instructions,
+            instructions=ANALYZER_PROMPT_TEMPLATE,
             input_text=json.dumps(
                 {"batch_number": batch_number, "examples": payload},
                 ensure_ascii=False,
@@ -79,12 +79,14 @@ class OpenAIStyleAnalyzer:
         for attempt in range(self._max_attempts):
             try:
                 try:
+                    self.request_count += 1
                     response: Any = await self._client.responses.create(
                         model=self._model,
                         instructions=instructions,
                         input=input_text,
                         store=False,
                     )
+                    self._record_usage(getattr(response, "usage", None))
                     output_text = str(getattr(response, "output_text", "") or "")
                     if output_text.strip():
                         parsed = json.loads(output_text)
@@ -93,6 +95,7 @@ class OpenAIStyleAnalyzer:
                 except Exception:  # noqa: BLE001, S110
                     pass
 
+                self.request_count += 1
                 chat_response: Any = await self._client.chat.completions.create(
                     model=self._model,
                     messages=[
@@ -101,6 +104,7 @@ class OpenAIStyleAnalyzer:
                     ],
                     response_format={"type": "json_object"},
                 )
+                self._record_usage(getattr(chat_response, "usage", None))
                 raw_content = chat_response.choices[0].message.content or ""
                 parsed = json.loads(raw_content)
                 if isinstance(parsed, dict):
@@ -112,8 +116,29 @@ class OpenAIStyleAnalyzer:
                     await asyncio.sleep(min(2**attempt, 2))
         assert last_error is not None
         raise RuntimeError(
-            f"Style analysis failed after {self._max_attempts} attempts: {last_error}"
+            f"Style analysis failed after {self._max_attempts} attempts: "
+            f"{type(last_error).__name__}"
         ) from last_error
+
+    def _record_usage(self, usage: Any) -> None:
+        if usage is None:
+            self.input_tokens_used = None
+            self.output_tokens_used = None
+            return
+        input_tokens = getattr(usage, "input_tokens", None)
+        if input_tokens is None:
+            input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "output_tokens", None)
+        if output_tokens is None:
+            output_tokens = getattr(usage, "completion_tokens", None)
+        if input_tokens is None or output_tokens is None:
+            self.input_tokens_used = None
+            self.output_tokens_used = None
+            return
+        if self.input_tokens_used is not None:
+            self.input_tokens_used += int(input_tokens)
+        if self.output_tokens_used is not None:
+            self.output_tokens_used += int(output_tokens)
 
 
 def _parse_rules(value: dict[str, Any]) -> list[StyleRule]:

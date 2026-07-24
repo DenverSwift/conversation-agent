@@ -48,7 +48,7 @@ wheels = [
 
 [[package]]
 name = "conversation-agent"
-version = "0+aa.1"
+version = "0+aa.2"
 source = { editable = "." }
 dependencies = [
     { name = "openai" },

@@ -1,4 +1,4 @@
-"""Local supporting metrics for AA.1 style comparisons."""
+"""Local supporting metrics for AA.2 style comparisons."""
 
 from __future__ import annotations
 

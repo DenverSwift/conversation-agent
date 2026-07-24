@@ -1,4 +1,4 @@
-"""Compose provenance-aware, budgeted AA.1 model requests."""
+"""Compose provenance-aware, budgeted AA.2 model requests."""
 
 from __future__ import annotations
 

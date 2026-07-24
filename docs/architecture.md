@@ -1,6 +1,6 @@
 # Architecture
 
-## Current AA.1 boundaries
+## Current AA.2 boundaries
 
 - `telegram/` filters Telethon events and sends replies from Matvey's personal account.
 - `trainer/` owns the separate private Bot API review UI and notification delivery.
@@ -64,3 +64,22 @@ model is not part of the roadmap. See
 [`adr/0001-runtime-style-adaptation.md`](adr/0001-runtime-style-adaptation.md).
 
 No architecture decisions are final until documented in `docs/adr/`.
+
+## AA.2 incremental compiler
+
+The compiler canonicalizes every qualifying source into a stable source key and
+a SHA-256 hash of normalized style-relevant fields. Private SQLite state maps
+each source to structured observations and retains a content-hash cache.
+Unchanged evidence and duplicate content reuse that cache. New or modified
+unique hashes are analyzed in bounded delta batches.
+
+Final rules are merged locally from all active per-source observations.
+Supporting source keys and hashes make deletions reversible: removing a source
+removes its contribution without resending unchanged raw messages. Generated
+bundle files and a replacement compiler database are staged first and
+published only after analysis and validation succeed.
+
+An analysis fingerprint covers the model, prompt template, observation schema,
+compiler and normalization versions, batch configuration, and evidence policy.
+Incompatible state stops the build until a contributor explicitly requests
+`--full-rebuild`.

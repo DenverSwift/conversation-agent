@@ -146,6 +146,7 @@ def create_style_runtime(
         bundle = load_style_bundle(
             settings.style_bundle_directory,
             contact_id=settings.allowed_telegram_user_id,
+            state_path=settings.style_compiler_state_path,
         )
     except ValueError:
         if settings.style_require_bundle:

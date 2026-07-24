@@ -7,5 +7,5 @@ if not exist ".env" (
   exit /b 1
 )
 
-uv run python -m conversation_agent.tools.build_style_bundle
+uv run python -m conversation_agent.tools.build_style_bundle %*
 exit /b %ERRORLEVEL%

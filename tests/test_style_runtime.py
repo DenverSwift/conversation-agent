@@ -111,7 +111,7 @@ def test_style_compiler_processes_every_source_batch(tmp_path: Path) -> None:
     assert len(bundle.examples) == 5
 
 
-def test_style_compiler_analyzes_duplicates_but_bank_deduplicates(tmp_path: Path) -> None:
+def test_style_compiler_ignores_repeated_row_with_same_source_key(tmp_path: Path) -> None:
     source = tmp_path / "cleaned_examples.jsonl"
     write_source(source, 2)
     lines = source.read_text(encoding="utf-8").splitlines()
@@ -131,8 +131,8 @@ def test_style_compiler_analyzes_duplicates_but_bank_deduplicates(tmp_path: Path
     )
     bundle = load_style_bundle(tmp_path / "style", contact_id=CONTACT_ID)
 
-    assert analyzer.batch_ids == [["human-0", "human-0"], ["human-1"]]
-    assert summary["source_example_count"] == 3
+    assert analyzer.batch_ids == [["human-0", "human-1"]]
+    assert summary["source_example_count"] == 2
     assert summary["example_bank_count"] == 2
     assert len(bundle.examples) == 2
 
@@ -420,7 +420,7 @@ def test_safe_inspection_prints_metadata_only(
     current = replace(
         settings(tmp_path),
         style_adaptation_enabled=True,
-        prompt_version="AA.1",
+        prompt_version="AA.2",
     )
     monkeypatch.setattr(inspect_tool.Settings, "load", lambda: current)
     monkeypatch.setattr("sys.argv", ["inspect_style_runtime"])
@@ -429,7 +429,7 @@ def test_safe_inspection_prints_metadata_only(
     captured = capsys.readouterr()
 
     metadata = json.loads(captured.out)
-    assert metadata["prompt_version"] == "AA.1"
+    assert metadata["prompt_version"] == "AA.2"
     assert metadata["source_example_count"] == 5
     assert "incoming 0" not in captured.out
     assert captured.err == ""

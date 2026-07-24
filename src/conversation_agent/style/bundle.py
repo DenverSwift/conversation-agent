@@ -6,17 +6,36 @@ import json
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.style.compiler_state import load_compiler_artifacts
 from conversation_agent.style.models import StyleBundle, StyleExample, StyleRule
 
 
-def load_style_bundle(directory: Path, *, contact_id: int) -> StyleBundle:
+def load_style_bundle(
+    directory: Path,
+    *,
+    contact_id: int,
+    state_path: Path | None = None,
+) -> StyleBundle:
+    state_path = state_path or directory / "compiler_state.sqlite3"
+    artifacts = load_compiler_artifacts(state_path)
     rules_path = directory / "matvey_behavior_rules.md"
     profile_path = directory / "style_profile.json"
     bank_path = directory / "example_bank.jsonl"
     summary_path = directory / "build_summary.json"
     contact_path = directory / "contacts" / f"{contact_id}.json"
     required = (rules_path, profile_path, bank_path, summary_path, contact_path)
-    missing = [str(path) for path in required if not path.is_file()]
+    relative_paths = (
+        "matvey_behavior_rules.md",
+        "style_profile.json",
+        "example_bank.jsonl",
+        "build_summary.json",
+        f"contacts/{contact_id}.json",
+    )
+    missing = [
+        str(path)
+        for path, relative in zip(required, relative_paths, strict=True)
+        if relative not in artifacts and not path.is_file()
+    ]
     if missing:
         raise ValueError(
             "Required style bundle is missing. Run: "
@@ -24,16 +43,23 @@ def load_style_bundle(directory: Path, *, contact_id: int) -> StyleBundle:
             + ", ".join(missing)
         )
 
-    profile = _read_object(profile_path)
-    summary = _read_object(summary_path)
-    contact = _read_object(contact_path)
+    profile = _read_object_content(artifacts.get("style_profile.json"), profile_path)
+    summary = _read_object_content(artifacts.get("build_summary.json"), summary_path)
+    contact = _read_object_content(
+        artifacts.get(f"contacts/{contact_id}.json"),
+        contact_path,
+    )
+    bank_text = _text_content(artifacts.get("example_bank.jsonl"), bank_path)
     examples = tuple(
         StyleExample.from_dict(json.loads(line))
-        for line in bank_path.read_text(encoding="utf-8").splitlines()
+        for line in bank_text.splitlines()
         if line.strip()
     )
     rules = tuple(StyleRule.from_dict(item) for item in profile.get("rules", []))
-    rules_markdown = rules_path.read_text(encoding="utf-8").strip()
+    rules_markdown = _text_content(
+        artifacts.get("matvey_behavior_rules.md"),
+        rules_path,
+    ).strip()
     if not rules_markdown or not rules:
         raise ValueError("Style bundle contains no compiled behavior rules")
     return StyleBundle(
@@ -52,8 +78,20 @@ def load_manual_overrides(directory: Path) -> str:
     return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
 
 
-def _read_object(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _read_object_content(content: bytes | None, fallback: Path) -> dict[str, Any]:
+    value = json.loads(
+        content.decode("utf-8")
+        if content is not None
+        else fallback.read_text(encoding="utf-8")
+    )
     if not isinstance(value, dict):
-        raise TypeError(f"Expected JSON object: {path}")
+        raise TypeError(f"Expected JSON object: {fallback}")
     return value
+
+
+def _text_content(content: bytes | None, fallback: Path) -> str:
+    return (
+        content.decode("utf-8")
+        if content is not None
+        else fallback.read_text(encoding="utf-8")
+    )

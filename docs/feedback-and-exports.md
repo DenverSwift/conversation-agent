@@ -74,8 +74,9 @@ export_summary.json
 The summary contains aggregate counts only, never conversation text.
 
 `TRAINING_EXPORT_LIMIT=500` is an export bound, not a runtime prompt size. The
-AA.1 compiler reads these files offline, and the complete dataset is never sent
-on every runtime request.
+AA.2 compiler reads these files offline, and the complete dataset is never sent
+on every runtime request. After the initial device-local build, unchanged
+sources reuse cached observations and consume no new analysis tokens.
 
 ## Reviewed feedback export
 
@@ -97,7 +98,7 @@ can appear in the positive export. For corrected records, the human correction
 is the preferred target. Rejected replies without corrections never enter the
 positive file.
 
-The positive file is not automatically a style-evidence index. AA.1 retrieval
+The positive file is not automatically a style-evidence index. AA.2 retrieval
 must use only real Matvey-authored messages and corrected Fix replies as
 positive style evidence. Approved AI-generated replies may remain useful for
 evaluation or preference analysis, but must never teach Matvey's style.
@@ -108,11 +109,11 @@ evaluation or preference analysis, but must never teach Matvey's style.
   in local SQLite.
 - **Dataset export** writes provider-independent JSONL for inspection and
   downstream tools.
-- **Runtime few-shot adaptation** selects a small relevant subset for each AA.1
+- **Runtime few-shot adaptation** selects a small relevant subset for each AA.2
   request.
 - **Optional future training** may use an open-weight model or another
   provider-independent workflow after explicit review. It is not required for
-  AA.1.
+  AA.2.
 
 Exported datasets are useful for runtime example retrieval, evaluation, prompt
 development, and possible future open-weight model training. The exporter does

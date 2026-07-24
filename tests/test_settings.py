@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from conversation_agent.settings import Settings
@@ -26,6 +28,9 @@ ENV_KEYS = (
     "STYLE_RULES_MAX_CHARS",
     "STYLE_EXAMPLES_MAX_CHARS",
     "STYLE_REQUIRE_BUNDLE",
+    "STYLE_INCREMENTAL_COMPILATION",
+    "STYLE_COMPILER_STATE_PATH",
+    "STYLE_ANALYSIS_BATCH_SIZE",
 )
 
 
@@ -59,7 +64,12 @@ def test_trainer_settings_are_optional_when_disabled(tmp_path, monkeypatch) -> N
 
     assert not settings.trainer_bot_enabled
     assert settings.trainer_bot_token is None
-    assert settings.prompt_version == "AA.1"
+    assert settings.prompt_version == "AA.2"
+    assert settings.style_incremental_compilation
+    assert settings.style_compiler_state_path == Path(
+        ".runtime/style/compiler_state.sqlite3"
+    )
+    assert settings.style_analysis_batch_size == 50
 
 
 def test_style_adaptation_can_be_explicitly_disabled(tmp_path, monkeypatch) -> None:

@@ -30,9 +30,12 @@
 - A numeric subversion, such as `AAA.2`, represents engineering improvements within the same capability.
 - Treat `docs/versioning.md` as the source of truth and do not reintroduce semantic milestone versions.
 - Preserve historical prompt-version strings stored in local data; never rewrite them during a version update.
-- The current base-personality release is `AA.1`; runtime style rules and retrieved
+- The current base-personality release is `AA.2`; runtime style rules and retrieved
   human evidence must remain provider-independent and must never treat AI replies
   as Matvey-authored style evidence.
+- Preserve incremental compiler compatibility: unchanged private evidence must
+  reuse local cached observations, and analyzer changes require an explicit
+  `--full-rebuild`.
 
 ## Git
 

@@ -14,7 +14,7 @@ Conversation Agent follows the Cup Size capability progression defined in
 | `DD` | Digital clone |
 | `E` | Experimental future capabilities |
 
-The current released implementation is `AA.1`.
+The current released implementation is `AA.2`.
 
 ## AA.1: Base personality
 
@@ -44,6 +44,22 @@ The AA.1 runtime:
 - tracks provenance through selection and prompt assembly;
 - injects the selected examples before calling the configured base model;
 - proves with tests that the full 500-example dataset is not sent per request.
+
+## AA.2: Incremental Style Compiler
+
+AA.2 preserves the AA.1 cognitive capability while improving its local
+engineering workflow. Every source gets a stable identity and deterministic
+SHA-256 content hash. Structured observations are cached in private,
+device-specific SQLite state.
+
+- unchanged sources consume no new analysis requests;
+- new and modified sources are the only raw evidence sent for analysis;
+- duplicate content under another source key reuses existing analysis while
+  increasing evidence counts;
+- deleted and modified old sources lose their previous contributions;
+- final rules are deterministically regenerated from all currently valid
+  cached observations;
+- analyzer fingerprint changes require an explicit `--full-rebuild`.
 
 ## Longer-term training
 
