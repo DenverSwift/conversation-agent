@@ -14,10 +14,18 @@ class OpenAIReplyClient:
 
     async def create_reply(self, *, instructions: str, messages: list[dict[str, str]]) -> str:
         input_messages: Any = messages
-        response: Any = await self._client.responses.create(
-            model=self._model,
-            instructions=instructions,
-            input=input_messages,
-            store=False,
-        )
-        return str(getattr(response, "output_text", "") or "").strip()
+        try:
+            response: Any = await self._client.responses.create(
+                model=self._model,
+                instructions=instructions,
+                input=input_messages,
+                store=False,
+            )
+            return str(getattr(response, "output_text", "") or "").strip()
+        except Exception:  # noqa: BLE001
+            formatted_messages: Any = [{"role": "system", "content": instructions}] + list(messages)
+            chat_response: Any = await self._client.chat.completions.create(
+                model=self._model,
+                messages=formatted_messages,
+            )
+            return str(chat_response.choices[0].message.content or "").strip()
