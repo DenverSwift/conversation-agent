@@ -78,25 +78,41 @@ class OpenAIStyleAnalyzer:
         last_error: Exception | None = None
         for attempt in range(self._max_attempts):
             try:
-                response: Any = await self._client.responses.create(
+                try:
+                    response: Any = await self._client.responses.create(
+                        model=self._model,
+                        instructions=instructions,
+                        input=input_text,
+                        store=False,
+                    )
+                    output_text = str(getattr(response, "output_text", "") or "")
+                    if output_text.strip():
+                        parsed = json.loads(output_text)
+                        if isinstance(parsed, dict):
+                            return parsed
+                except Exception:  # noqa: BLE001, S110
+                    pass
+
+                chat_response: Any = await self._client.chat.completions.create(
                     model=self._model,
-                    instructions=instructions,
-                    input=input_text,
-                    store=False,
-                    text={"format": {"type": "json_object"}},
+                    messages=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": input_text},
+                    ],
+                    response_format={"type": "json_object"},
                 )
-                parsed = json.loads(str(response.output_text))
-                if not isinstance(parsed, dict):
-                    raise TypeError("Style analyzer returned a non-object JSON value")
-                return parsed
+                raw_content = chat_response.choices[0].message.content or ""
+                parsed = json.loads(raw_content)
+                if isinstance(parsed, dict):
+                    return parsed
+                raise TypeError("Style analyzer returned a non-object JSON value")
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if attempt + 1 < self._max_attempts:
                     await asyncio.sleep(min(2**attempt, 2))
         assert last_error is not None
         raise RuntimeError(
-            f"Style analysis failed after {self._max_attempts} attempts: "
-            f"{type(last_error).__name__}"
+            f"Style analysis failed after {self._max_attempts} attempts: {last_error}"
         ) from last_error
 
 
