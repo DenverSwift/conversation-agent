@@ -4,7 +4,7 @@ An AI communication agent that understands personal context, mimics a user's com
 
 ## Purpose
 
-`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Version 0.2 adds local feedback collection and review-first dataset exports without implementing training or automatic personalization.
+`conversation-agent` is a local Python application that replies in one allowed private Telegram dialog through Telethon and the OpenAI API. Release `AAA.2` adds local feedback collection and review-first dataset exports without implementing training or automatic personalization.
 
 ## Repository Structure
 
@@ -20,6 +20,7 @@ conversation-agent/
 |   |-- vision.md
 |   |-- architecture.md
 |   |-- roadmap.md
+|   |-- versioning.md
 |   `-- decisions/
 |-- prompts/
 |-- src/conversation_agent/
@@ -35,7 +36,13 @@ conversation-agent/
 
 ## Current Status
 
-Version 0.2: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies and explicit Saved Messages feedback can be stored in a local SQLite database, and local CLI tools can export human-authored history or reviewed feedback for manual inspection.
+Release `AAA.2`: the reply MVP remains restricted to Telegram user `1751105897`. Generated replies and explicit Saved Messages feedback can be stored in a local SQLite database, and local CLI tools can export human-authored history or reviewed feedback for manual inspection.
+
+## Versioning
+
+Conversation Agent uses an internal Cup Size progression instead of semantic milestone versions. The current release is `AAA.2`: `AAA` identifies the infrastructure capability stage, while `.2` identifies its second engineering iteration.
+
+See [docs/versioning.md](docs/versioning.md) for the complete progression, rules, roadmap, and examples.
 
 ## Matvey communication behavior
 

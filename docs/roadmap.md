@@ -1,8 +1,17 @@
 # Roadmap
 
-## Near Term
+Conversation Agent follows the Cup Size capability progression defined in
+[`versioning.md`](versioning.md).
 
-- Keep the repository structure clear.
-- Define safe configuration practices.
-- Write prompts and style guidance.
-- Add implementation only through focused follow-up tasks.
+| Cup size | Capability |
+| --- | --- |
+| `AAA` | Infrastructure |
+| `AA` | Base personality |
+| `A` | Contact adaptation |
+| `B` | Relationship memory |
+| `C` | Social intelligence |
+| `D` | Human-level communication |
+| `DD` | Digital clone |
+| `E` | Experimental future capabilities |
+
+The current release is `AAA.2`.

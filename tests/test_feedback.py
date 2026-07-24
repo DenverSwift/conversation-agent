@@ -39,7 +39,7 @@ def repository_with_reply(tmp_path) -> tuple[SQLiteFeedbackRepository, int]:
             incoming_message_id=10,
             created_at="2026-07-24T10:00:00+00:00",
             model="model",
-            prompt_version="v0.2",
+            prompt_version="AAA.2",
             generated_reply_text="generated",
             context_json="[]",
         )

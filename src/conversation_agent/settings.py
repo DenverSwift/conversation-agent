@@ -21,7 +21,7 @@ class Settings:
     feedback_enabled: bool = True
     feedback_database_path: Path = Path(".runtime/feedback.sqlite3")
     feedback_saved_messages_enabled: bool = True
-    prompt_version: str = "v0.2"
+    prompt_version: str = "AAA.2"
     training_export_directory: Path = Path(".runtime/exports")
     training_export_limit: int = 500
     training_export_context_limit: int = 10
@@ -50,7 +50,7 @@ class Settings:
                 "FEEDBACK_SAVED_MESSAGES_ENABLED",
                 default=True,
             ),
-            prompt_version=_with_default("PROMPT_VERSION", "v0.2"),
+            prompt_version=_with_default("PROMPT_VERSION", "AAA.2"),
             training_export_directory=Path(
                 _with_default("TRAINING_EXPORT_DIRECTORY", ".runtime/exports")
             ),

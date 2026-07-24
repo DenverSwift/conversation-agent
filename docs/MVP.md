@@ -1,4 +1,4 @@
-# MVP v0.1 — Telegram Conversation Agent
+# MVP AAA.1 — Telegram Conversation Agent
 
 ## Цель
 

@@ -23,6 +23,14 @@
 - Run relevant checks before committing.
 - For scaffold-only changes, at minimum check repository status and validate configuration files.
 
+## Versioning
+
+- Use the Cup Size progression `AAA`, `AA`, `A`, `B`, `C`, `D`, `DD`, `E`.
+- A letter change introduces a new cognitive capability.
+- A numeric subversion, such as `AAA.2`, represents engineering improvements within the same capability.
+- Treat `docs/versioning.md` as the source of truth and do not reintroduce semantic milestone versions.
+- Preserve historical prompt-version strings stored in local data; never rewrite them during a version update.
+
 ## Git
 
 - Commit only intentional project changes.

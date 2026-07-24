@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conversation-agent"
-version = "0.2.0"
+version = "0+aaa.2"
 description = "Local Telegram conversation agent with feedback and dataset export tooling."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,6 +22,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.conversation-agent]
+cup-version = "AAA.2"
 
 [tool.ruff]
 line-length = 100

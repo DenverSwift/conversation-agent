@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from conversation_agent.storage.models import FeedbackUpdate, NewGeneratedReply
 from conversation_agent.storage.sqlite_repository import SQLiteFeedbackRepository
 
@@ -10,7 +12,7 @@ def new_reply() -> NewGeneratedReply:
         incoming_message_id=10,
         created_at="2026-07-24T10:00:00+00:00",
         model="test-model",
-        prompt_version="v0.2",
+        prompt_version="AAA.2",
         generated_reply_text="generated",
         context_json='[{"role":"user","text":"hello"}]',
     )
@@ -26,7 +28,7 @@ def test_generated_reply_record_is_created(tmp_path) -> None:
     assert record is not None
     assert record.generated_reply_text == "generated"
     assert record.delivery_status == "generated"
-    assert record.prompt_version == "v0.2"
+    assert record.prompt_version == "AAA.2"
 
 
 def test_sent_telegram_message_id_is_stored(tmp_path) -> None:
@@ -78,3 +80,16 @@ def test_feedback_update_is_persisted(tmp_path) -> None:
     assert record is not None
     assert record.feedback_status == "corrected"
     assert record.corrected_reply_text == "human correction"
+
+
+def test_legacy_prompt_version_remains_readable(tmp_path) -> None:
+    repository = SQLiteFeedbackRepository(tmp_path / "feedback.sqlite3")
+    repository.initialize()
+    reply_id = repository.create_generated_reply(
+        replace(new_reply(), prompt_version="v0.2")
+    )
+
+    record = repository.get_reply(reply_id)
+
+    assert record is not None
+    assert record.prompt_version == "v0.2"

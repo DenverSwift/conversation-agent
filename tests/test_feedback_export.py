@@ -20,7 +20,7 @@ def record(
         created_at="2026-07-24T10:00:00+00:00",
         sent_at="2026-07-24T10:00:01+00:00",
         model="model",
-        prompt_version="v0.2",
+        prompt_version="AAA.2",
         generated_reply_text="original AI reply",
         context_json='[{"role":"user","text":"question"}]',
         delivery_status="sent",
