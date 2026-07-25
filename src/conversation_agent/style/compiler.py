@@ -27,7 +27,7 @@ from conversation_agent.style.compiler_state import (
     update_last_build_mode,
     write_compiler_state,
 )
-from conversation_agent.style.models import StyleExample, StyleRule
+from conversation_agent.style.models import StyleExample, StyleRule, _safe_int
 from conversation_agent.style.openai_analyzer import (
     ANALYZER_PROMPT_TEMPLATE,
     ANALYZER_PROMPT_VERSION,
@@ -405,7 +405,7 @@ def _load_human_examples_with_stats(
             if isinstance(source_ids, list) and source_ids
             else str(value.get("example_id", f"line-{line_number}"))
         )
-        dialog_id = int(value.get("dialog_id", contact_id))
+        dialog_id = _safe_int(value.get("dialog_id"), default=contact_id)
         examples.append(
             StyleExample(
                 example_id=str(value.get("example_id", f"human-{line_number}")),

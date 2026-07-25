@@ -6,6 +6,34 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    val_str = str(value).strip()
+    if not val_str:
+        return default
+    try:
+        return int(val_str)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    val_str = str(value).strip()
+    if not val_str:
+        return None
+    try:
+        return int(val_str)
+    except (ValueError, TypeError):
+        return None
+
+
 @dataclass(frozen=True)
 class StyleExample:
     example_id: str
@@ -45,15 +73,13 @@ class StyleExample:
     def from_dict(cls, value: dict[str, Any]) -> StyleExample:
         return cls(
             example_id=str(value["example_id"]),
-            contact_id=int(value["contact_id"]),
+            contact_id=_safe_int(value.get("contact_id"), default=0),
             incoming_text=str(value["incoming_text"]),
             response_text=str(value["response_text"]),
             source_type=str(value["source_type"]),
             polarity=str(value["polarity"]),
             created_at=str(value.get("created_at", "")),
-            feedback_id=(
-                int(value["feedback_id"]) if value.get("feedback_id") is not None else None
-            ),
+            feedback_id=_safe_optional_int(value.get("feedback_id")),
             context=tuple(
                 {
                     "role": str(item.get("role", "")),
@@ -107,7 +133,7 @@ class StyleRule:
         return cls(
             text=str(value["text"]),
             confidence=float(value.get("confidence", 0)),
-            evidence_count=int(value.get("evidence_count", 0)),
+            evidence_count=_safe_int(value.get("evidence_count"), default=1),
             source_type=str(value.get("source_type", "mixed")),
             applicable_context=str(value.get("applicable_context", "general")),
             scope=str(value.get("scope", "global")),
@@ -120,7 +146,7 @@ class StyleRule:
                 str(item) for item in value.get("supporting_source_hashes", [])
             ),
             polarity=str(value.get("polarity", "positive")),
-            source_priority=int(value.get("source_priority", 0)),
+            source_priority=_safe_int(value.get("source_priority"), default=0),
         )
 
 
