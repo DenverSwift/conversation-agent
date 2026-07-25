@@ -69,6 +69,7 @@ async def run_build(args: argparse.Namespace) -> dict[str, Any]:
     feedback_records = _feedback_records(settings)
     if args.status:
         return _status(settings, feedback_records, batch_size)
+    print("[1/2] Загрузка исходных примеров и базы отзывов...", file=sys.stderr)
     if args.full_rebuild:
         print(
             "FULL REBUILD: all unique style sources will be reanalyzed. "

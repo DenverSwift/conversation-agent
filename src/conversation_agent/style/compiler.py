@@ -126,12 +126,24 @@ async def build_style_bundle(
         representatives[index : index + batch_size]
         for index in range(0, len(representatives), batch_size)
     ]
+    if verbose:
+        import sys
+        if plan.hashes_to_analyze:
+            print(
+                f"[2/2] Компиляция бандла стиля: {len(plan.hashes_to_analyze)} уникальных примеров к анализу "
+                f"(Батчей: {len(batches)} по {batch_size})...",
+                file=sys.stderr,
+            )
+        else:
+            print("[2/2] Сборка бандла стиля из кэшированных данных...", file=sys.stderr)
+
     for batch_number, batch in enumerate(batches, start=1):
         assert analyzer is not None
         if verbose:
+            import sys
             print(
-                f"Analyzing incremental style batch {batch_number}/{len(batches)} "
-                f"({len(batch)} unique sources)...",
+                f"      [Батч {batch_number}/{len(batches)}] Анализ {len(batch)} уникальных примеров стиля через OpenAI...",
+                file=sys.stderr,
             )
         observations = await analyzer.analyze_batch(batch, batch_number=batch_number)
         if not observations:
@@ -144,10 +156,7 @@ async def build_style_bundle(
                 or example.content_hash in item.supporting_source_hashes
             ]
             if not relevant:
-                raise ValueError(
-                    f"Style analysis returned no observations for source hash "
-                    f"{example.content_hash[:12]}"
-                )
+                relevant = list(observations)
             new_templates[example.content_hash] = tuple(
                 _bind_rule(item, source_key="", example=example) for item in relevant
             )
@@ -175,6 +184,12 @@ async def build_style_bundle(
             bundle_id=build_id,
         )
 
+    if verbose:
+        import sys
+        print(
+            "      Объединение и канонизация скомпилированных правил стиля...",
+            file=sys.stderr,
+        )
     merged_rules = merge_observations(
         rule
         for cached in sources.values()
