@@ -97,6 +97,26 @@ class StyleExample:
         )
 
 
+def _safe_float(value: Any, default: float = 0.8) -> float:
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    val_str = str(value).strip().lower()
+    if not val_str:
+        return default
+    if val_str in ("high", "high_confidence", "strong"):
+        return 0.9
+    if val_str in ("medium", "moderate"):
+        return 0.7
+    if val_str in ("low", "weak"):
+        return 0.5
+    try:
+        return float(val_str)
+    except (ValueError, TypeError):
+        return default
+
+
 @dataclass(frozen=True)
 class StyleRule:
     text: str
@@ -132,7 +152,7 @@ class StyleRule:
     def from_dict(cls, value: dict[str, Any]) -> StyleRule:
         return cls(
             text=str(value["text"]),
-            confidence=float(value.get("confidence", 0)),
+            confidence=_safe_float(value.get("confidence"), default=0.8),
             evidence_count=_safe_int(value.get("evidence_count"), default=1),
             source_type=str(value.get("source_type", "mixed")),
             applicable_context=str(value.get("applicable_context", "general")),

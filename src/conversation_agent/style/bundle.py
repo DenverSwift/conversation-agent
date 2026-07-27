@@ -23,13 +23,12 @@ def load_style_bundle(
     bank_path = directory / "example_bank.jsonl"
     summary_path = directory / "build_summary.json"
     contact_path = directory / "contacts" / f"{contact_id}.json"
-    required = (rules_path, profile_path, bank_path, summary_path, contact_path)
+    required = (rules_path, profile_path, bank_path, summary_path)
     relative_paths = (
         "matvey_behavior_rules.md",
         "style_profile.json",
         "example_bank.jsonl",
         "build_summary.json",
-        f"contacts/{contact_id}.json",
     )
     missing = [
         str(path)
@@ -45,10 +44,11 @@ def load_style_bundle(
 
     profile = _read_object_content(artifacts.get("style_profile.json"), profile_path)
     summary = _read_object_content(artifacts.get("build_summary.json"), summary_path)
-    contact = _read_object_content(
-        artifacts.get(f"contacts/{contact_id}.json"),
-        contact_path,
-    )
+    contact_key = f"contacts/{contact_id}.json"
+    if contact_key in artifacts or contact_path.is_file():
+        contact = _read_object_content(artifacts.get(contact_key), contact_path)
+    else:
+        contact = {"contact_id": contact_id, "rules": [], "evidence_count": 0}
     bank_text = _text_content(artifacts.get("example_bank.jsonl"), bank_path)
     examples = tuple(
         StyleExample.from_dict(json.loads(line))
