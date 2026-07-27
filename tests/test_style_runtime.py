@@ -77,6 +77,7 @@ def settings(tmp_path: Path) -> Settings:
         openai_timeout_seconds=30,
         style_bundle_directory=tmp_path / "style",
         style_source_examples_path=tmp_path / "cleaned_examples.jsonl",
+        style_compiler_state_path=tmp_path / "style" / "compiler_state.sqlite3",
     )
 
 
