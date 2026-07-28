@@ -1,14 +1,15 @@
 # Private Trainer Bot
 
-AAA.3 replaces the old Saved Messages review interface with a separate private
-Telegram Bot API bot. The main Telethon agent still sends conversation replies;
-the trainer bot only records human review in the shared local SQLite database.
+AAA.3 introduced the separate private Telegram Bot API review interface. The
+current AA.1 human-agent workflow also uses it as a mandatory approval gate:
+the main Telethon agent prepares drafts, and only an approved or corrected
+action can start delivery to the real contact.
 
 ## Setup
 
 1. Open the official `@BotFather` chat in Telegram.
 2. Create a bot with `/newbot` and keep the returned token private.
-3. Obtain Matvey's numeric Telegram user ID from a trusted Telegram ID lookup
+3. Obtain the trainer's numeric Telegram user ID from a trusted Telegram ID lookup
    method or the `account_id` line written by the existing Telethon login flow.
 4. Open a private chat with the new bot and press **Start**.
 5. Set these values in the local `.env`:
@@ -44,17 +45,20 @@ second trainer instance exits instead of polling concurrently.
 
 ## Review controls
 
-- **Good** approves the exact generated reply.
-- **Bad** opens normalized quality categories. **Other** waits up to 15 minutes
-  for a free-text reason.
-- **Fix** waits up to 15 minutes for the reply Matvey should have written.
-- **Should not reply** records a negative `should_not_reply` example.
-- **Details** shows concise delivery and model metadata without full context.
+- **Approve** queues the exact proposed bubbles for delivery.
+- **Fix** waits up to 15 minutes for the reply the account owner wants to send, then queues
+  that human-authored correction.
+- **Reject** records a negative review and sends nothing.
+- **Handoff** sends nothing and disables automatic processing for the contact.
+- **Skip** closes the draft without sending.
+- **Details** shows concise analysis, goal, timing, retrieval, model, and prompt
+  metadata without the complete prompt.
 
 Use `/cancel` to leave text-entry mode. Corrections and reasons are stored in
-SQLite, survive a process restart, and are never sent to the real conversation
-contact. `/recent` shows at most five recent cards, while `/pending` shows at
-most five unreviewed cards.
+SQLite and survive a process restart. A Fix is sent only through the same
+stale-aware behavior runtime used by Approve. `/recent` shows at most five
+recent cards, while `/pending` shows at most five unreviewed cards. Repeated
+callbacks are idempotent.
 
 ## Delivery failures
 
@@ -63,9 +67,9 @@ timestamp, and a concise error category. Failed or interrupted cards are retried
 in a limited batch when the trainer process starts. The saved trainer message ID
 prevents duplicate automatic cards.
 
-A trainer-card failure never retracts or blocks a conversation reply that
-Telegram has already accepted. Check `logs/trainer-bot.log` and `/status`; logs
-never contain message, reply, correction, context, or token text.
+A trainer-card failure leaves the draft undelivered. Check
+`logs/trainer-bot.log` and `/status`; logs never contain message, reply,
+correction, context, or token text.
 
 ## Privacy and disabling
 
@@ -73,15 +77,15 @@ The trainer bot rejects every user and chat except the configured private
 trainer chat. Callback payloads contain only an action and local reply ID.
 Review cards do not contain the full context or system instructions.
 
-Set `TRAINER_BOT_ENABLED=false` and do not start the trainer process to disable
-the UI. The main agent and SQLite feedback storage continue working. Historical
-AAA.2 Saved Messages reviews remain readable and exportable; AAA.3 does not
-create or process new Saved Messages feedback.
+Historical AAA.2 Saved Messages reviews remain readable and exportable; no new
+Saved Messages feedback is created. The AA.1 approval-first agent intentionally
+refuses production startup when `TRAINER_BOT_ENABLED=false`,
+`FEEDBACK_ENABLED=false`, or shadow mode is disabled.
 
-The existing feedback exporter treats approved and corrected reviews as
-positive data, rejected reviews as negative data, and never promotes an
-uncorrected rejection to a positive target.
+The existing feedback exporter keeps approval outcomes available for evaluation
+and treats corrected Fix text as human-authored evidence. Rejected reviews are
+negative data and are never promoted to a positive target.
 
-For AA.2 style retrieval, only human-authored Fix corrections are positive
-Matvey evidence. A Good-reviewed AI reply remains useful for evaluation but is
-never treated as proof of Matvey's writing style.
+For AA.2 style retrieval, only human-authored Fix corrections and imported real
+human history are positive owner evidence. An approved AI reply remains useful
+for evaluation but is never treated as proof of Matvey's writing style.

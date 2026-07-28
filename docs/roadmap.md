@@ -22,6 +22,12 @@ AA.1 means: **Base personality through persistent runtime behavior rules and
 dynamic human example injection.** It does not depend on an OpenAI fine-tuning
 job and does not modify model weights.
 
+The implemented AA.1 Telegram Human Agent flow also makes this personality
+operational in inbound business conversations: messages are accumulated and
+analyzed, a goal and structured reply are proposed, and a private Trainer Bot
+must approve or correct the behavior plan before delivery. See
+[`aa1-telegram-human-agent-mvp.md`](aa1-telegram-human-agent-mvp.md).
+
 Required runtime path:
 
 ```text

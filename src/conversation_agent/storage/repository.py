@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from conversation_agent.storage.conversation_models import AgentDraftRecord
 from conversation_agent.storage.models import (
     FeedbackCounts,
     FeedbackUpdate,
@@ -94,4 +95,34 @@ class FeedbackRepository(Protocol):
 
     def feedback_counts(self) -> FeedbackCounts:
         """Return aggregate trainer status counts."""
+        ...
+
+    def get_agent_draft(self, draft_id: int) -> AgentDraftRecord | None:
+        """Return an approval-first draft when the reply belongs to the new flow."""
+        ...
+
+    def enqueue_trainer_action(
+        self,
+        draft_id: int,
+        *,
+        action: str,
+        created_at: str,
+        payload_text: str | None = None,
+    ) -> bool:
+        """Persist one idempotent trainer decision for the Telegram worker."""
+        ...
+
+    def save_draft_feedback(
+        self,
+        draft_id: int,
+        *,
+        status: str,
+        created_at: str,
+        source: str,
+        category: str | None = None,
+        comment: str | None = None,
+        corrected_text: str | None = None,
+        trainer_user_id: int | None = None,
+    ) -> None:
+        """Store normalized provenance for approval-first feedback."""
         ...

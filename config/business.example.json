@@ -1,0 +1,36 @@
+{
+  "name": "Example studio",
+  "description": "Replace this safe example with local business information.",
+  "services": [
+    "Telegram automation",
+    "AI workflow prototypes"
+  ],
+  "target_audience": [
+    "Small businesses with a defined automation task"
+  ],
+  "typical_client_tasks": [
+    "Qualify an incoming lead",
+    "Automate a repetitive Telegram workflow"
+  ],
+  "restrictions": [
+    "Do not promise delivery dates before human review",
+    "Do not provide discounts or legal commitments"
+  ],
+  "allowed_promises": [
+    "A human can review the task and propose next steps"
+  ],
+  "pricing_rules": [
+    "Ask for scope before discussing a price",
+    "Escalate final pricing to a human"
+  ],
+  "portfolio_links": [],
+  "qualification_criteria": [
+    "The client can describe the task",
+    "The client can share an approximate timeline"
+  ],
+  "desired_next_step": "clarify the task and offer a call when the lead is qualified",
+  "handoff_conditions": [
+    "The client requests a firm quote",
+    "The client is ready to schedule a call"
+  ]
+}

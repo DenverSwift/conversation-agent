@@ -92,7 +92,7 @@ async def handle_incoming_event(
             return
 
         try:
-            if await matvey_replied_after(client, peer, getattr(event, "id", 0), own_user_id):
+            if await account_replied_after(client, peer, getattr(event, "id", 0), own_user_id):
                 logger.info("Manual reply detected after message_id=%s; skipping LLM reply", message_id)
                 _mark_delivery(
                     feedback_repository,
@@ -135,7 +135,7 @@ async def handle_incoming_event(
                 )
 
 
-async def matvey_replied_after(
+async def account_replied_after(
     client: Any,
     peer: Any,
     incoming_message_id: int,
@@ -149,6 +149,16 @@ async def matvey_replied_after(
         if getattr(message, "sender_id", None) == own_user_id or bool(getattr(message, "out", False)):
             return True
     return False
+
+
+async def matvey_replied_after(
+    client: Any,
+    peer: Any,
+    incoming_message_id: int,
+    own_user_id: int,
+) -> bool:
+    """Backward-compatible alias for the pre-AA.1 public helper."""
+    return await account_replied_after(client, peer, incoming_message_id, own_user_id)
 
 
 async def _event_peer(event: Any) -> Any:

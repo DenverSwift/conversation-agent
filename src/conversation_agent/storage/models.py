@@ -55,6 +55,14 @@ class GeneratedReplyRecord:
     notification_attempts: int = 0
     notification_last_attempt_at: str | None = None
     notification_error_category: str | None = None
+    draft_status: str | None = None
+    analyzer_json: str = ""
+    goal_json: str = ""
+    behavior_plan_json: str = ""
+    prompt_inspection_json: str = ""
+    confidence: float = 0.0
+    handoff_required: bool = False
+    provider: str = "openai"
 
 
 @dataclass(frozen=True)

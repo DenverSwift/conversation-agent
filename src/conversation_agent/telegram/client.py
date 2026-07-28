@@ -45,3 +45,20 @@ def register_message_handler(
         )
 
     client.add_event_handler(_handler, events.NewMessage(incoming=True))
+
+
+def register_orchestrator_handler(
+    client: Any,
+    *,
+    settings: Settings,
+    orchestrator: Any,
+) -> None:
+    from telethon import events
+
+    from conversation_agent.telegram.orchestrator import should_process_event
+
+    async def _handler(event: Any) -> None:
+        if should_process_event(event, settings.allowed_contact_ids):
+            await orchestrator.handle_event(event)
+
+    client.add_event_handler(_handler, events.NewMessage(incoming=True))

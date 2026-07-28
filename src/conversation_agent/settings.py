@@ -40,12 +40,40 @@ class Settings:
     style_examples_max_chars: int = 10000
     style_require_bundle: bool = True
     style_incremental_compilation: bool = True
-    style_compiler_state_path: Path = Path(
-        ".runtime/style/compiler_state.sqlite3"
-    )
+    style_compiler_state_path: Path = Path(".runtime/style/compiler_state.sqlite3")
     style_analysis_batch_size: int = 50
     log_path: Path = Path("logs/agent.log")
     runtime_dir: Path = Path(".runtime")
+    shadow_mode: bool = True
+    accumulation_min_wait_seconds: float = 3.0
+    accumulation_max_wait_seconds: float = 12.0
+    urgent_message_bypass: bool = False
+    typing_speed_min_chars_per_second: float = 7.0
+    typing_speed_max_chars_per_second: float = 13.0
+    behavior_delay_jitter_ms: int = 350
+    initial_read_delay_min_ms: int = 800
+    initial_read_delay_max_ms: int = 3500
+    pre_typing_delay_min_ms: int = 500
+    pre_typing_delay_max_ms: int = 2500
+    bubble_delay_min_ms: int = 500
+    bubble_delay_max_ms: int = 1800
+    max_bubble_count: int = 4
+    max_message_length: int = 1200
+    confidence_threshold: float = 0.55
+    handoff_threshold: float = 0.25
+    allowed_telegram_user_ids: tuple[int, ...] = ()
+    identity_profile_path: Path = Path("config/identity.example.json")
+    business_profile_path: Path = Path("config/business.example.json")
+    style_profile_path: Path = Path("config/style.example.json")
+    analysis_model: str = ""
+    response_model: str = ""
+    prompt_token_budget: int = 6000
+    debug_mode: bool = False
+    approval_poll_interval_seconds: float = 0.5
+
+    @property
+    def allowed_contact_ids(self) -> tuple[int, ...]:
+        return self.allowed_telegram_user_ids or (self.allowed_telegram_user_id,)
 
     @classmethod
     def load(cls, env_file: str | Path = ".env") -> Settings:
@@ -109,9 +137,7 @@ class Settings:
                 "STYLE_ADAPTATION_ENABLED",
                 default=True,
             ),
-            style_bundle_directory=Path(
-                _with_default("STYLE_BUNDLE_DIRECTORY", ".runtime/style")
-            ),
+            style_bundle_directory=Path(_with_default("STYLE_BUNDLE_DIRECTORY", ".runtime/style")),
             style_source_examples_path=Path(
                 _with_default(
                     "STYLE_SOURCE_EXAMPLES_PATH",
@@ -142,6 +168,77 @@ class Settings:
             style_analysis_batch_size=_positive_int_with_default(
                 "STYLE_ANALYSIS_BATCH_SIZE",
                 50,
+            ),
+            shadow_mode=_boolean("SHADOW_MODE", default=True),
+            accumulation_min_wait_seconds=_positive_float_with_default(
+                "ACCUMULATION_MIN_WAIT_SECONDS",
+                3.0,
+            ),
+            accumulation_max_wait_seconds=_positive_float_with_default(
+                "ACCUMULATION_MAX_WAIT_SECONDS",
+                12.0,
+            ),
+            urgent_message_bypass=_boolean("URGENT_MESSAGE_BYPASS", default=False),
+            typing_speed_min_chars_per_second=_positive_float_with_default(
+                "TYPING_SPEED_MIN_CHARS_PER_SECOND",
+                7.0,
+            ),
+            typing_speed_max_chars_per_second=_positive_float_with_default(
+                "TYPING_SPEED_MAX_CHARS_PER_SECOND",
+                13.0,
+            ),
+            behavior_delay_jitter_ms=_non_negative_int_with_default(
+                "BEHAVIOR_DELAY_JITTER_MS",
+                350,
+            ),
+            initial_read_delay_min_ms=_non_negative_int_with_default(
+                "INITIAL_READ_DELAY_MIN_MS",
+                800,
+            ),
+            initial_read_delay_max_ms=_non_negative_int_with_default(
+                "INITIAL_READ_DELAY_MAX_MS",
+                3500,
+            ),
+            pre_typing_delay_min_ms=_non_negative_int_with_default(
+                "PRE_TYPING_DELAY_MIN_MS",
+                500,
+            ),
+            pre_typing_delay_max_ms=_non_negative_int_with_default(
+                "PRE_TYPING_DELAY_MAX_MS",
+                2500,
+            ),
+            bubble_delay_min_ms=_non_negative_int_with_default(
+                "BUBBLE_DELAY_MIN_MS",
+                500,
+            ),
+            bubble_delay_max_ms=_non_negative_int_with_default(
+                "BUBBLE_DELAY_MAX_MS",
+                1800,
+            ),
+            max_bubble_count=_positive_int_with_default("MAX_BUBBLE_COUNT", 4),
+            max_message_length=_positive_int_with_default("MAX_MESSAGE_LENGTH", 1200),
+            confidence_threshold=_unit_float_with_default(
+                "CONFIDENCE_THRESHOLD",
+                0.55,
+            ),
+            handoff_threshold=_unit_float_with_default("HANDOFF_THRESHOLD", 0.25),
+            allowed_telegram_user_ids=_int_tuple("ALLOWED_TELEGRAM_USER_IDS"),
+            identity_profile_path=Path(
+                _with_default("IDENTITY_PROFILE_PATH", "config/identity.example.json")
+            ),
+            business_profile_path=Path(
+                _with_default("BUSINESS_PROFILE_PATH", "config/business.example.json")
+            ),
+            style_profile_path=Path(
+                _with_default("STYLE_PROFILE_PATH", "config/style.example.json")
+            ),
+            analysis_model=_optional("ANALYSIS_MODEL") or _required("OPENAI_MODEL"),
+            response_model=_optional("RESPONSE_MODEL") or _required("OPENAI_MODEL"),
+            prompt_token_budget=_positive_int_with_default("PROMPT_TOKEN_BUDGET", 6000),
+            debug_mode=_boolean("DEBUG_MODE", default=False),
+            approval_poll_interval_seconds=_positive_float_with_default(
+                "APPROVAL_POLL_INTERVAL_SECONDS",
+                0.5,
             ),
         )
 
@@ -223,6 +320,48 @@ def _positive_int_with_default(name: str, default: int) -> int:
     if value <= 0:
         raise ValueError(f"Setting {name} must be greater than zero")
     return value
+
+
+def _non_negative_int_with_default(name: str, default: int) -> int:
+    raw_value = _with_default(name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"Setting {name} must be an integer") from exc
+    if value < 0:
+        raise ValueError(f"Setting {name} must be zero or greater")
+    return value
+
+
+def _positive_float_with_default(name: str, default: float) -> float:
+    raw_value = _with_default(name, str(default))
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"Setting {name} must be a number") from exc
+    if value <= 0:
+        raise ValueError(f"Setting {name} must be greater than zero")
+    return value
+
+
+def _unit_float_with_default(name: str, default: float) -> float:
+    value = _positive_float_with_default(name, default)
+    if value > 1:
+        raise ValueError(f"Setting {name} must be at most one")
+    return value
+
+
+def _int_tuple(name: str) -> tuple[int, ...]:
+    raw_value = os.environ.get(name, "").strip()
+    if not raw_value:
+        return ()
+    result: list[int] = []
+    for item in raw_value.split(","):
+        try:
+            result.append(int(item.strip()))
+        except ValueError as exc:
+            raise ValueError(f"Setting {name} must be a comma-separated list of integers") from exc
+    return tuple(dict.fromkeys(result))
 
 
 def _boolean(name: str, *, default: bool) -> bool:

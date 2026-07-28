@@ -1,16 +1,40 @@
 # Architecture
 
-## Current AA.2 boundaries
+## Current AA.2 approval-first boundaries
 
-- `telegram/` filters Telethon events and sends replies from Matvey's personal account.
-- `trainer/` owns the separate private Bot API review UI and notification delivery.
-- `agent/` builds the current context and prompt.
-- `llm/` owns the OpenAI client.
-- `storage/` defines a replaceable feedback repository with a local SQLite implementation.
+- `telegram/` filters Telethon events, buffers each contact independently,
+  invalidates stale work, and executes approved behavior plans.
+- `trainer/` owns the separate private Bot API review UI, notifications, and
+  idempotent trainer actions.
+- `agent/` separates interaction analysis, goal planning, retrieval, prompt
+  composition, response generation, and behavior planning.
+- `llm/` defines a replaceable structured-output provider and the OpenAI
+  Responses API implementation.
+- `domain/` contains validated profiles, conversation state, drafts, plans, and
+  provenance-aware message models.
+- `storage/` defines repository boundaries and a backward-compatible local
+  SQLite implementation.
 - `training/` contains deterministic extraction, grouping, cleaning, redaction, and export code.
 - `tools/` contains thin command-line entrypoints.
 
-Telegram handlers depend on the `FeedbackRepository` protocol rather than SQLite directly. This keeps a future PostgreSQL implementation from requiring handler rewrites.
+The production path is:
+
+```text
+incoming private message
+-> per-contact accumulation
+-> analysis and goal
+-> relevant human evidence
+-> structured response and behavior plan
+-> pending SQLite draft
+-> private Trainer Bot card
+-> idempotent trainer action
+-> approved Telegram behavior
+```
+
+No AI draft is delivered before approval. A newer incoming message marks
+pending drafts for that contact stale. The runtime checks staleness, new
+incoming messages, and a manual Matvey reply before every bubble. Reject and
+Skip never send; Handoff disables automatic processing for that contact.
 
 The agent process and trainer-bot process share SQLite through short
 transactions. WAL mode and a busy timeout allow concurrent readers and writers.
@@ -19,13 +43,21 @@ trainer chat/message IDs prevent duplicate cards. Interrupted claims become
 retryable after a bounded stale interval.
 
 The trainer bot accepts only the configured user in the configured private
-chat. Callback payloads contain only an action and local reply ID. Cards contain
-the incoming message and exact generated reply, but never full context,
-prompts, credentials, or Telegram session data.
+chat. Callback payloads contain only an action and local draft ID. Cards contain
+the incoming message group, proposed bubbles, decision metadata, and a safe
+prompt summary, but never credentials, Telegram session data, or the complete
+prompt.
 
-When feedback is enabled, the generated reply record is created before Telegram delivery. If this initial local write fails, delivery is blocked so an untracked AI message cannot later be mistaken for a human-authored training target. Once Telegram returns a message ID, that ID is stored and used by the history exporter. Feedback-disabled mode bypasses storage and retains the `AAA.1` reply flow.
+SQLite storage and the private Trainer Bot are mandatory for this approval-first
+runtime. Draft creation and its behavior plan are committed before notification.
+If persistence fails, nothing is sent. Telegram delivery and SQLite cannot share
+one atomic transaction, so a failure after Telegram accepts a bubble but before
+its ID is persisted is logged without private text and requires manual review.
 
-Telegram delivery and SQLite cannot share one atomic transaction. A failure after Telegram accepts a message but before its returned ID is persisted is logged without private text and requires manual dataset review.
+Schema version 3 preserves historical `generated_replies` and trainer records
+while adding profiles, conversations, state, provenance-aware messages,
+behavior plans, drafts, normalized feedback, retrieved-example metadata,
+runtime events, handoffs, and idempotent trainer actions.
 
 ## AA.1 runtime style adaptation
 
@@ -45,10 +77,10 @@ AA.1 selects a small set of relevant examples rather than sending the
 complete 500-message dataset on every request. Selection and prompt assembly
 must preserve provenance so the application can enforce these evidence rules:
 
-- only real human-authored Matvey messages are style evidence;
+- only real messages authored by the configured identity owner are style evidence;
 - AI-generated replies are never style evidence, even when approved;
 - rejected replies are never positive examples;
-- corrected Fix replies are human-authored evidence and have the highest
+- corrected Fix replies are owner-authored evidence and have the highest
   retrieval priority;
 - recent conversation remains conversation context, not automatically style
   evidence;

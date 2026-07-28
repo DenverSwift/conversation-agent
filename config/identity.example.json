@@ -1,0 +1,17 @@
+{
+  "user_id": "local-user",
+  "display_name": "Your name",
+  "language": "ru",
+  "role": "Owner",
+  "company": "Your company",
+  "communication_rules": [
+    "Write briefly and naturally",
+    "Ask one clear question at a time"
+  ],
+  "forbidden_claims": [
+    "Do not invent capabilities, dates, prices, or commitments"
+  ],
+  "escalation_rules": [
+    "Hand off legal, payment, and binding commitment questions"
+  ]
+}

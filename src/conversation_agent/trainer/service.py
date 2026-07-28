@@ -71,14 +71,26 @@ class TrainerService:
                 ),
                 callback_notice="Waiting for correction",
             )
-        if action == "no_reply":
+        if action in {"no_reply", "skip"}:
             return self._save(
                 reply_id,
                 status="rejected",
                 category="should_not_reply",
             )
-        if action == "good":
+        if action in {"good", "approve"}:
             return self._save(reply_id, status="approved")
+        if action == "reject":
+            return self._save(
+                reply_id,
+                status="rejected",
+                category="trainer_reject",
+            )
+        if action == "handoff":
+            return self._save(
+                reply_id,
+                status="rejected",
+                category="handoff",
+            )
         if action == "cancel":
             self.repository.clear_pending_interaction(self.trainer_user_id)
             return ServiceResult(
@@ -157,6 +169,19 @@ class TrainerService:
         comment: str | None = None,
         corrected_reply_text: str | None = None,
     ) -> ServiceResult:
+        draft_getter = getattr(self.repository, "get_agent_draft", None)
+        draft = draft_getter(reply_id) if draft_getter is not None else None
+        current = self.repository.get_reply(reply_id)
+        if (
+            draft is not None
+            and current is not None
+            and current.feedback_status != "unreviewed"
+        ):
+            return ServiceResult(
+                edit_reply_id=reply_id,
+                remove_keyboard=True,
+                callback_notice="Already handled",
+            )
         saved = self.repository.save_feedback(
             reply_id,
             FeedbackUpdate(
@@ -171,6 +196,31 @@ class TrainerService:
         )
         if not saved:
             return ServiceResult(callback_notice="Action unavailable")
+        if draft is not None:
+            action = _trainer_action(
+                status=status,
+                category=category,
+                corrected_reply_text=corrected_reply_text,
+            )
+            if action is not None:
+                action_name, payload = action
+                enqueued = self.repository.enqueue_trainer_action(
+                    reply_id,
+                    action=action_name,
+                    payload_text=payload,
+                    created_at=self._now().isoformat(),
+                )
+                if enqueued:
+                    self.repository.save_draft_feedback(
+                        reply_id,
+                        status=status,
+                        category=category,
+                        comment=comment,
+                        corrected_text=corrected_reply_text,
+                        source="trainer_bot",
+                        trainer_user_id=self.trainer_user_id,
+                        created_at=self._now().isoformat(),
+                    )
         return ServiceResult(
             edit_reply_id=reply_id,
             remove_keyboard=True,
@@ -188,3 +238,22 @@ class TrainerService:
                 expires_at=(now + PENDING_TTL).isoformat(),
             )
         )
+
+
+def _trainer_action(
+    *,
+    status: str,
+    category: str | None,
+    corrected_reply_text: str | None,
+) -> tuple[str, str | None] | None:
+    if status == "approved":
+        return "approve", None
+    if status == "corrected" and corrected_reply_text:
+        return "fix", corrected_reply_text
+    if category == "handoff":
+        return "handoff", "trainer requested handoff"
+    if category == "should_not_reply":
+        return "skip", None
+    if status == "rejected":
+        return "reject", category
+    return None

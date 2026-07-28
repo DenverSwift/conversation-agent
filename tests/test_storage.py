@@ -141,7 +141,7 @@ def test_aaa2_database_migrates_without_data_loss(tmp_path) -> None:
     assert record.prompt_version == "AAA.2"
     assert record.feedback_source == "saved_messages"
     with sqlite3.connect(database_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_two_repository_instances_can_write_concurrently(tmp_path) -> None:

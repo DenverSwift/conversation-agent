@@ -1,0 +1,15 @@
+{
+  "average_message_length": 80,
+  "formality": "informal professional",
+  "vocabulary": [],
+  "punctuation": "natural",
+  "emoji_usage": "rare",
+  "profanity_usage": "only when supported by real human evidence",
+  "openings": [],
+  "endings": [],
+  "directness": "direct",
+  "bubble_pattern": "short natural Telegram bubbles",
+  "forbidden_generic_phrases": [
+    "generic assistant offers unsupported by real evidence"
+  ]
+}
