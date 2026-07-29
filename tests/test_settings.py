@@ -43,6 +43,19 @@ ENV_KEYS = (
     "LOCAL_GENERATION_SEED",
     "LOCAL_GENERATION_LOW_CONFIDENCE_THRESHOLD",
     "LOCAL_CONTEXT_BUDGET_CHARS",
+    "LOCAL_LLM_BASE_URL",
+    "LOCAL_LLM_MODEL",
+    "LOCAL_LLM_API_KEY",
+    "LOCAL_LLM_TIMEOUT_SECONDS",
+    "LOCAL_LLM_MAX_OUTPUT_TOKENS",
+    "LOCAL_LLM_CONTEXT_TOKENS",
+    "LOCAL_LLM_TEMPERATURE",
+    "LOCAL_LLM_TOP_K",
+    "LOCAL_LLM_TOP_P",
+    "LOCAL_LLM_MIN_P",
+    "LOCAL_LLM_PRESENCE_PENALTY",
+    "LOCAL_LLM_THINKING",
+    "LOCAL_LLM_SEED",
 )
 
 
@@ -83,8 +96,8 @@ def test_trainer_settings_are_optional_when_disabled(tmp_path, monkeypatch) -> N
     )
     assert settings.style_analysis_batch_size == 50
     assert settings.generation_mode == "openai_only"
-    assert settings.local_generation_provider == "fake"
-    assert settings.local_generation_model == "telegram-qwen3-0.6b"
+    assert settings.local_generation_provider == "openai_compatible"
+    assert settings.local_generation_model == "Qwen/Qwen3-0.6B-GGUF:Q8_0"
 
 
 def test_local_generation_settings_are_configurable(tmp_path, monkeypatch) -> None:
@@ -106,6 +119,27 @@ def test_local_generation_settings_are_configurable(tmp_path, monkeypatch) -> No
     assert settings.local_generation_base_url == "http://localhost:8080/v1"
     assert settings.local_generation_model == "qwen-test"
     assert settings.local_generation_seed == 42
+
+
+def test_local_llm_stage_one_environment_overrides_are_supported(tmp_path, monkeypatch) -> None:
+    clear_environment(monkeypatch)
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:9090/v1")
+    monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen-stage-one")
+    monkeypatch.setenv("LOCAL_LLM_API_KEY", "local-test")
+    monkeypatch.setenv("LOCAL_LLM_TIMEOUT_SECONDS", "31")
+    monkeypatch.setenv("LOCAL_LLM_MAX_OUTPUT_TOKENS", "128")
+    monkeypatch.setenv("LOCAL_LLM_CONTEXT_TOKENS", "2048")
+    monkeypatch.setenv("LOCAL_LLM_THINKING", "false")
+
+    settings = Settings.load(write_env(tmp_path, "TRAINER_BOT_ENABLED=false\n"))
+
+    assert settings.local_generation_base_url == "http://127.0.0.1:9090/v1"
+    assert settings.local_generation_model == "qwen-stage-one"
+    assert settings.local_generation_api_key == "local-test"
+    assert settings.local_generation_timeout_seconds == 31
+    assert settings.local_generation_max_output_tokens == 128
+    assert settings.local_generation_context_tokens == 2048
+    assert settings.local_generation_thinking is False
 
 
 def test_local_only_settings_do_not_require_openai_credentials(tmp_path, monkeypatch) -> None:
