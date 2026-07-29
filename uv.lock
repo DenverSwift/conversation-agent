@@ -69,6 +69,7 @@ requires-dist = [
     { name = "python-telegram-bot", specifier = ">=22.8,<23" },
     { name = "telethon", specifier = ">=1.0.0" },
 ]
+provides-extras = ["local-inference", "training", "benchmark"]
 
 [package.metadata.requires-dev]
 dev = [

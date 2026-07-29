@@ -13,7 +13,7 @@ from conversation_agent.storage.models import (
     PendingInteraction,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_NOTIFICATION_ATTEMPTS = 3
 
 BASE_SCHEMA = """
@@ -60,6 +60,105 @@ CREATE INDEX IF NOT EXISTS idx_generated_replies_notification
 ON generated_replies(notification_status, notification_attempts);
 """
 
+LOCAL_SLM_SCHEMA = """
+CREATE TABLE IF NOT EXISTS model_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    base_url TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS model_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    tokenizer_revision TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(model_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS adapter_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    adapter_id TEXT NOT NULL UNIQUE,
+    base_model TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS adapter_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    adapter_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    dataset_fingerprint TEXT NOT NULL,
+    output_path TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(adapter_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS training_datasets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dataset_id TEXT NOT NULL UNIQUE,
+    fingerprint TEXT NOT NULL,
+    example_count INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dataset_examples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dataset_id TEXT NOT NULL,
+    example_id TEXT NOT NULL,
+    split TEXT NOT NULL,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(dataset_id, example_id)
+);
+
+CREATE TABLE IF NOT EXISTS training_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL UNIQUE,
+    base_model TEXT NOT NULL,
+    dataset_fingerprint TEXT NOT NULL,
+    hyperparameters_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    output_path TEXT,
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    failure_details TEXT,
+    started_at TEXT,
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL UNIQUE,
+    dataset_fingerprint TEXT NOT NULL,
+    config_fingerprint TEXT NOT NULL,
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS model_outputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    scenario_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    raw_output_json TEXT NOT NULL,
+    normalized_output_json TEXT NOT NULL,
+    validation_errors_json TEXT NOT NULL DEFAULT '[]',
+    timing_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS comparison_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    scenario_id TEXT NOT NULL,
+    candidate_a_output_id INTEGER NOT NULL,
+    candidate_b_output_id INTEGER NOT NULL,
+    operator_rating TEXT,
+    provider_reveal_json TEXT NOT NULL DEFAULT '{}'
+);
+"""
+
 MIGRATION_COLUMNS = {
     "incoming_message_text": "TEXT NOT NULL DEFAULT ''",
     "feedback_source": "TEXT",
@@ -92,6 +191,7 @@ class SQLiteFeedbackRepository:
                         f"ALTER TABLE generated_replies ADD COLUMN {name} {declaration}"
                     )
             connection.executescript(TRAINER_SCHEMA)
+            connection.executescript(LOCAL_SLM_SCHEMA)
             connection.execute(
                 """
                 UPDATE generated_replies

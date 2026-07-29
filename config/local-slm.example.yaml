@@ -1,0 +1,26 @@
+generation:
+  mode: local_with_fallback
+  local:
+    provider: openai_compatible
+    base_url: http://127.0.0.1:8080/v1
+    model: telegram-qwen3-0.6b
+    timeout_seconds: 20
+    max_output_tokens: 256
+    temperature: 0.7
+    top_p: 0.9
+  fallback:
+    enabled: true
+    provider: openai
+    model: gpt-4o-mini
+  fallback_rules:
+    low_confidence_threshold: 0.55
+    on_timeout: true
+    on_invalid_output: true
+    on_sensitive_topic: true
+policy:
+  provider: rules
+  model: null
+training:
+  datasets_dir: .runtime/training/datasets
+  models_dir: .runtime/models
+  runs_dir: .runtime/training/runs
