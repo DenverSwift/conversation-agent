@@ -1,0 +1,3 @@
+{"id":"ack","messages":["ок"],"expected_action":"no_reply"}
+{"id":"service","messages":["привет","нужен бот для заявок"],"expected_action":"reply"}
+{"id":"handoff","messages":["надо подписать договор и счет"],"expected_action":"handoff"}

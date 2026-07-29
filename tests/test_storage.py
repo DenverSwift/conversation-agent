@@ -141,7 +141,33 @@ def test_aaa2_database_migrates_without_data_loss(tmp_path) -> None:
     assert record.prompt_version == "AAA.2"
     assert record.feedback_source == "saved_messages"
     with sqlite3.connect(database_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+
+
+def test_local_slm_registry_tables_are_created(tmp_path) -> None:
+    repository = SQLiteFeedbackRepository(tmp_path / "feedback.sqlite3")
+    repository.initialize()
+
+    with sqlite3.connect(repository.database_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+
+    assert {
+        "model_registry",
+        "model_versions",
+        "adapter_registry",
+        "adapter_versions",
+        "training_datasets",
+        "dataset_examples",
+        "training_runs",
+        "evaluation_runs",
+        "model_outputs",
+        "comparison_results",
+    } <= tables
 
 
 def test_two_repository_instances_can_write_concurrently(tmp_path) -> None:

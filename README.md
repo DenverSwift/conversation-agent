@@ -131,6 +131,19 @@ session and private data, or securely transfer the complete
 
 Use `scripts\stop_agent.bat` and `scripts\stop_trainer_bot.bat` for clean shutdown.
 
+## Experimental Local SLM
+
+The branch `experiment/local-telegram-slm` contains a proof of concept for local
+Telegram generation. It is documented in
+[docs/experiments/local-telegram-slm.md](docs/experiments/local-telegram-slm.md).
+
+Quick offline commands:
+
+```bat
+python -m conversation_agent local-simulate --message "привет" --message "нужен бот"
+python -m conversation_agent benchmark run --dataset tests/fixtures/dialogue_benchmark.jsonl --providers fake --output .runtime/benchmarks/run-001
+```
+
 ## Local Feedback
 
 Feedback is local by design because generated replies, context snapshots, and corrections contain private conversation data. With `FEEDBACK_ENABLED=true`, SQLite is created at `.runtime/feedback.sqlite3`. Set it to `false` to keep the original reply behavior without creating or requiring a database.
