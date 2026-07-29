@@ -42,26 +42,50 @@ The proof of concept separates the system into small components:
 
 ## Local Endpoint
 
-Run a llama.cpp-compatible server separately, for example:
+Stage 1 uses the official llama.cpp HTTP server with
+`Qwen/Qwen3-0.6B-GGUF:Q8_0`. Install and run it on localhost:
 
 ```powershell
-llama-server -m C:\models\telegram-qwen.gguf --host 127.0.0.1 --port 8080
+scripts\local_slm\install_llama_cpp.bat
+scripts\local_slm\start_qwen3_06b.bat
+scripts\local_slm\check_qwen3_06b.bat
 ```
 
-Then configure:
+The start script binds only to `127.0.0.1:8080`, limits context to 4096
+tokens, writes its PID and logs under `.runtime/local_slm/`, waits for
+`/health` and `/v1/models`, and refuses to start a second server. Stop only
+the managed process with:
+
+```powershell
+scripts\local_slm\stop_qwen3_06b.bat
+```
+
+Configuration:
 
 ```env
 GENERATION_MODE=local_only
-LOCAL_GENERATION_PROVIDER=openai_compatible
-LOCAL_GENERATION_BASE_URL=http://127.0.0.1:8080/v1
-LOCAL_GENERATION_MODEL=telegram-qwen3-0.6b
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1
+LOCAL_LLM_MODEL=Qwen/Qwen3-0.6B-GGUF:Q8_0
+LOCAL_LLM_API_KEY=local-no-key
+LOCAL_LLM_TIMEOUT_SECONDS=30
+LOCAL_LLM_MAX_OUTPUT_TOKENS=256
+LOCAL_LLM_CONTEXT_TOKENS=4096
+LOCAL_LLM_THINKING=false
 ```
 
-No model is downloaded automatically by this repository.
+The model is downloaded by llama.cpp into the user Hugging Face cache. It is
+not stored in the repository. The normal project default remains
+`GENERATION_MODE=openai_only`.
 
-## Offline Demo
+## Real Local Demo
 
-The fake provider requires no OpenAI, Telegram, GPU, torch, or transformers:
+First verify the full endpoint and provider contract:
+
+```powershell
+python -m conversation_agent local-model-doctor
+```
+
+Then run real local inference:
 
 ```powershell
 python -m conversation_agent local-simulate `
@@ -71,9 +95,38 @@ python -m conversation_agent local-simulate `
   --message "нужен бот для заявок"
 ```
 
-The output includes accumulated messages, policy decision, compact context,
-selected provider, generated bubbles, validation, fallback route, and behavior
-metadata.
+Without `--fake`, this command requires the real endpoint and fails clearly if
+it is unavailable. It never switches to `FakeLocalGenerationProvider` or
+OpenAI. The output includes provider, backend, model, accumulated messages,
+policy, compact context, raw action, generated bubbles, validation, retry
+count, tokens, latency, and tokens per second. TTFT is reported as unavailable
+because Stage 1 uses non-streaming Chat Completions.
+
+The fake provider remains available only when explicitly requested:
+
+```powershell
+python -m conversation_agent local-simulate --fake --message "нужен бот"
+```
+
+Run the five-scenario real smoke suite with:
+
+```powershell
+python -m conversation_agent local-model-smoke
+```
+
+Reports are written under `.runtime/local_slm/smoke/<timestamp>/`.
+
+## Structured Output
+
+The provider requests strict JSON Schema with the fields `action`, `messages`,
+`reaction`, `handoff_required`, and `confidence`. The schema is constrained to
+the action already selected by the dialogue policy. If an endpoint rejects
+JSON Schema, the provider retries with JSON object mode and validates locally.
+
+The Qwen chat template receives `enable_thinking=false`, and the system prompt
+starts with `/no_think`. `<think>`, `</think>`, and `reasoning_content` make the
+result invalid. Invalid JSON or semantically inconsistent fields receive one
+local repair attempt; failure after that is surfaced without OpenAI fallback.
 
 ## Dataset
 
@@ -138,8 +191,15 @@ production flow to local generation by default.
 
 ## Limits
 
-- The fake provider is only for tests and demos.
-- The OpenAI-compatible provider expects a running local server.
+- Qwen3 0.6B produces schema-valid output but response quality is still only
+  experimental and can be repetitive or shallow.
+- Stage 1 uses non-streaming Chat Completions, so TTFT is unavailable.
+- The fake provider is only available through the explicit `--fake` flag.
+- The real provider expects the managed local server or another compatible
+  endpoint.
 - In-process Hugging Face support is intentionally not imported by the base
   runtime; it belongs in an optional `training` or `local-inference` extra.
 - No weights, adapters, private exports, or datasets should be committed.
+
+See [Stage 1 results](local-telegram-slm-stage1-results.md) for the verified
+machine, commands, timings, and remaining limitations.
