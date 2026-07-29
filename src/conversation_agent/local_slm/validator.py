@@ -51,8 +51,13 @@ class OutputValidator:
                 errors.append("message_too_long")
             if any(phrase in lowered for phrase in FORBIDDEN_PHRASES):
                 errors.append("forbidden_phrase")
+            if "<think" in lowered or "</think" in lowered or "reasoning_content" in lowered:
+                errors.append("reasoning_output")
             if "http://" in lowered or "https://" in lowered:
                 errors.append("forbidden_link")
+        raw_lowered = result.raw_output.lower()
+        if "<think" in raw_lowered or "</think" in raw_lowered or "reasoning_content" in raw_lowered:
+            errors.append("reasoning_output")
         normalized = GenerationResult(
             action=result.action,
             messages=messages[: self.max_bubble_count],
@@ -60,8 +65,15 @@ class OutputValidator:
             handoff_required=result.handoff_required or result.action == "handoff",
             confidence=max(0.0, min(1.0, result.confidence)),
             provider=result.provider,
+            backend=result.backend,
+            model=result.model,
             raw_output=result.raw_output,
             latency_ms=result.latency_ms,
+            ttft_ms=result.ttft_ms,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            total_tokens=result.total_tokens,
+            tokens_per_second=result.tokens_per_second,
+            retry_count=result.retry_count,
         )
         return ValidationResult(valid=not errors, errors=tuple(sorted(set(errors))), normalized=normalized)
-

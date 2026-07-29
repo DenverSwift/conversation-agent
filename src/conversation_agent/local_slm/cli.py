@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
 from conversation_agent.local_slm.benchmark import run_benchmark
 from conversation_agent.local_slm.context import LocalContextBuilder
 from conversation_agent.local_slm.dataset import build_sft_dataset
-from conversation_agent.local_slm.models import DialoguePolicyInput, GenerationRequest
+from conversation_agent.local_slm.models import DialoguePolicyInput, GenerationRequest, HybridResult
 from conversation_agent.local_slm.policy import RuleBasedDialoguePolicy, safe_policy_decision
-from conversation_agent.local_slm.provider import FakeLocalGenerationProvider
+from conversation_agent.local_slm.provider import (
+    FakeLocalGenerationProvider,
+    LocalModelError,
+    OpenAICompatibleLocalProvider,
+)
 from conversation_agent.local_slm.router import HybridGenerationRouter
+from conversation_agent.local_slm.runtime_config import LocalLLMConfig
 from conversation_agent.local_slm.training import training_dry_run
 from conversation_agent.local_slm.validator import OutputValidator
 
@@ -24,7 +32,15 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     simulate.add_argument("--contact-id", default="test-contact")
     simulate.add_argument("--agent-id", default="informal-manager")
     simulate.add_argument("--message", action="append", required=True)
+    simulate.add_argument("--fake", action="store_true", help="Use explicit fake provider")
     simulate.set_defaults(func=_simulate)
+
+    doctor = subparsers.add_parser("local-model-doctor", help="Check real local model endpoint")
+    doctor.set_defaults(func=_doctor)
+
+    smoke = subparsers.add_parser("local-model-smoke", help="Run real local model smoke scenarios")
+    smoke.add_argument("--output-dir", default=".runtime/local_slm/smoke")
+    smoke.set_defaults(func=_smoke)
 
     dataset = subparsers.add_parser("build-slm-dataset", help="Build local SFT dataset")
     dataset.add_argument("--source", required=True)
@@ -50,11 +66,19 @@ def add_local_slm_parsers(subparsers: Any) -> None:
 def run_local_slm_command(args: argparse.Namespace) -> int:
     result = args.func(args)
     if result is not None:
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        if result.get("Ready") == "NO":
+            return 1
+        if "validation_success_rate" in result and result["validation_success_rate"] < 1.0:
+            return 1
     return 0
 
 
 def _simulate(args: argparse.Namespace) -> dict[str, Any]:
+    config = LocalLLMConfig.from_env()
     policy = RuleBasedDialoguePolicy()
     decision = safe_policy_decision(policy, DialoguePolicyInput(messages=tuple(args.message)))
     context_builder = LocalContextBuilder()
@@ -63,25 +87,173 @@ def _simulate(args: argparse.Namespace) -> dict[str, Any]:
         decision=decision,
         messages=[{"role": "user", "content": item} for item in args.message],
     )
-    router = HybridGenerationRouter(
-        local_provider=FakeLocalGenerationProvider(),
-        validator=OutputValidator(),
-        mode="local_only",
-    )
-    result = asyncio.run(router.generate(GenerationRequest(policy=decision, context=context)))
+    provider = _make_provider(config, fake=bool(args.fake))
+    request = GenerationRequest(policy=decision, context=context)
+    validator = OutputValidator()
+    if args.fake:
+        router = HybridGenerationRouter(
+            local_provider=provider,
+            validator=validator,
+            mode="local_only",
+        )
+        result = asyncio.run(router.generate(request))
+    else:
+        selected = asyncio.run(provider.generate(request))
+        validation = validator.validate(selected)
+        result = HybridResult(
+            selected=validation.normalized or selected,
+            validation=validation,
+            fallback_used=False,
+            provider_results={"local": selected},
+            route=("local",),
+        )
+    if not result.validation.valid:
+        raise LocalModelError(f"local-simulate validation failed: {result.validation.errors}")
     return {
         "contact_id": args.contact_id,
+        "provider": result.selected.provider,
+        "backend": result.selected.backend,
+        "model": result.selected.model or ("fake" if args.fake else config.model),
+        "fake_provider": bool(args.fake),
+        "openai_fallback_used": result.fallback_used,
         "accumulated_messages": args.message,
         "dialogue_policy": decision.to_dict(),
         "selected_context": context.render(budget_chars=4000),
         "selected_adapter": None,
-        "local_provider": "fake-local",
+        "local_provider": result.selected.provider,
+        "raw_action": result.selected.action,
+        "generated_bubbles": list(result.selected.messages),
+        "validator": result.validation.to_dict(),
+        "retry_count": result.selected.retry_count,
+        "prompt_tokens": result.selected.prompt_tokens,
+        "completion_tokens": result.selected.completion_tokens,
+        "ttft_ms": result.selected.ttft_ms,
+        "total_generation_ms": result.selected.latency_ms,
+        "tokens_per_second": result.selected.tokens_per_second,
         "generation": result.to_dict(),
         "behavior_plan": {
             "typing": result.selected.action == "reply",
             "bubble_count": len(result.selected.messages),
         },
     }
+
+
+def _make_provider(config: LocalLLMConfig, *, fake: bool) -> FakeLocalGenerationProvider | OpenAICompatibleLocalProvider:
+    if fake:
+        return FakeLocalGenerationProvider()
+    return OpenAICompatibleLocalProvider.from_config(config)
+
+
+def _doctor(args: argparse.Namespace) -> dict[str, Any]:
+    del args
+    return asyncio.run(_doctor_async(LocalLLMConfig.from_env()))
+
+
+async def _doctor_async(config: LocalLLMConfig) -> dict[str, Any]:
+    provider = OpenAICompatibleLocalProvider.from_config(config)
+    output: dict[str, Any] = {
+        "Local model server": "NO",
+        "Backend": "llama.cpp",
+        "Model": config.model,
+        "Endpoint": config.base_url,
+        "Chat completions": "NO",
+        "Structured output": "NO",
+        "Non-thinking": "NO",
+        "OpenAI fallback": "disabled",
+        "Ready": "NO",
+        "OpenAI key used": False,
+    }
+    try:
+        health = await provider.health_check()
+        output["Local model server"] = "OK" if health else "NO"
+        models = await provider.list_models()
+        output["Loaded models"] = models
+        if config.model not in models and models:
+            output["Reason"] = f"model mismatch: expected {config.model}, got {models}"
+            return output
+        request = _request_for_messages(("привет", "нужен бот для заявок"), "doctor-agent")
+        result = await provider.generate(request)
+        validation = OutputValidator().validate(result)
+        output["Chat completions"] = "OK"
+        output["Structured output"] = "OK" if validation.valid else "NO"
+        output["Non-thinking"] = "OK" if "reasoning_output" not in validation.errors else "NO"
+        output["Parsed action"] = result.action
+        output["Latency ms"] = result.latency_ms
+        output["Prompt tokens"] = result.prompt_tokens
+        output["Completion tokens"] = result.completion_tokens
+        output["Ready"] = "YES" if validation.valid else "NO"
+        if not validation.valid:
+            output["Reason"] = validation.errors
+    except Exception as exc:  # noqa: BLE001
+        output["Reason"] = f"{type(exc).__name__}: {exc}"
+    return output
+
+
+def _smoke(args: argparse.Namespace) -> dict[str, Any]:
+    config = LocalLLMConfig.from_env()
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    output_dir = Path(args.output_dir) / timestamp
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report = asyncio.run(_smoke_async(config))
+    (output_dir / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {"output_dir": str(output_dir), **report}
+
+
+async def _smoke_async(config: LocalLLMConfig) -> dict[str, Any]:
+    provider = OpenAICompatibleLocalProvider.from_config(config)
+    scenarios = [
+        ("service_ru", ("привет", "нужен бот для заявок")),
+        ("thanks_ack", ("спасибо",)),
+        ("handoff", ("скинь договор",)),
+        ("informal_reaction", ("😂",)),
+        ("formal_service_ru", ("Здравствуйте. Подскажите, вы занимаетесь разработкой Telegram-ботов?",)),
+    ]
+    validator = OutputValidator()
+    rows: list[dict[str, Any]] = []
+    valid = 0
+    for scenario_id, messages in scenarios:
+        request = _request_for_messages(messages, "informal-manager")
+        result = await provider.generate(request)
+        validation = validator.validate(result)
+        valid += int(validation.valid)
+        rows.append(
+            {
+                "id": scenario_id,
+                "input": list(messages),
+                "raw_output": result.raw_output,
+                "normalized_output": validation.normalized.to_dict() if validation.normalized else None,
+                "validation": validation.to_dict(),
+                "latency_ms": result.latency_ms,
+                "ttft_ms": result.ttft_ms,
+                "model": result.model,
+                "config_fingerprint": _config_fingerprint(config),
+            }
+        )
+    return {
+        "model": config.model,
+        "backend": "llama.cpp",
+        "scenarios": rows,
+        "validation_success_rate": valid / len(rows),
+    }
+
+
+def _request_for_messages(messages: tuple[str, ...], agent_id: str) -> GenerationRequest:
+    policy = RuleBasedDialoguePolicy()
+    decision = safe_policy_decision(policy, DialoguePolicyInput(messages=messages))
+    context = LocalContextBuilder().build(
+        agent_id=agent_id,
+        decision=decision,
+        messages=[{"role": "user", "content": item} for item in messages],
+    )
+    return GenerationRequest(policy=decision, context=context)
+
+
+def _config_fingerprint(config: LocalLLMConfig) -> str:
+    value = json.dumps(config.__dict__, sort_keys=True)
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _build_dataset(args: argparse.Namespace) -> dict[str, Any]:

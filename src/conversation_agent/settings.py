@@ -46,13 +46,19 @@ class Settings:
     style_analysis_batch_size: int = 50
     generation_mode: str = "openai_only"
     local_agent_id: str = "informal-manager"
-    local_generation_provider: str = "fake"
+    local_generation_provider: str = "openai_compatible"
     local_generation_base_url: str = "http://127.0.0.1:8080/v1"
-    local_generation_model: str = "telegram-qwen3-0.6b"
-    local_generation_timeout_seconds: float = 20.0
+    local_generation_model: str = "Qwen/Qwen3-0.6B-GGUF:Q8_0"
+    local_generation_api_key: str = "local-no-key"
+    local_generation_timeout_seconds: float = 30.0
     local_generation_max_output_tokens: int = 256
+    local_generation_context_tokens: int = 4096
     local_generation_temperature: float = 0.7
+    local_generation_top_k: int = 20
     local_generation_top_p: float = 0.9
+    local_generation_min_p: float = 0.0
+    local_generation_presence_penalty: float = 1.5
+    local_generation_thinking: bool = False
     local_generation_seed: int | None = None
     local_generation_low_confidence_threshold: float = 0.55
     local_context_budget_chars: int = 2400
@@ -173,34 +179,50 @@ class Settings:
             local_agent_id=_with_default("LOCAL_AGENT_ID", "informal-manager"),
             local_generation_provider=_choice(
                 "LOCAL_GENERATION_PROVIDER",
-                "fake",
+                "openai_compatible",
                 {"fake", "openai_compatible"},
             ),
             local_generation_base_url=_with_default(
-                "LOCAL_GENERATION_BASE_URL",
-                "http://127.0.0.1:8080/v1",
+                "LOCAL_LLM_BASE_URL",
+                _with_default("LOCAL_GENERATION_BASE_URL", "http://127.0.0.1:8080/v1"),
             ),
             local_generation_model=_with_default(
-                "LOCAL_GENERATION_MODEL",
-                "telegram-qwen3-0.6b",
+                "LOCAL_LLM_MODEL",
+                _with_default(
+                    "LOCAL_GENERATION_MODEL",
+                    "Qwen/Qwen3-0.6B-GGUF:Q8_0",
+                ),
             ),
+            local_generation_api_key=_with_default("LOCAL_LLM_API_KEY", "local-no-key"),
             local_generation_timeout_seconds=_positive_float_with_default(
-                "LOCAL_GENERATION_TIMEOUT_SECONDS",
-                20.0,
+                "LOCAL_LLM_TIMEOUT_SECONDS",
+                _positive_float_with_default("LOCAL_GENERATION_TIMEOUT_SECONDS", 30.0),
             ),
             local_generation_max_output_tokens=_positive_int_with_default(
-                "LOCAL_GENERATION_MAX_OUTPUT_TOKENS",
-                256,
+                "LOCAL_LLM_MAX_OUTPUT_TOKENS",
+                _positive_int_with_default("LOCAL_GENERATION_MAX_OUTPUT_TOKENS", 256),
+            ),
+            local_generation_context_tokens=_positive_int_with_default(
+                "LOCAL_LLM_CONTEXT_TOKENS",
+                4096,
             ),
             local_generation_temperature=_non_negative_float_with_default(
-                "LOCAL_GENERATION_TEMPERATURE",
-                0.7,
+                "LOCAL_LLM_TEMPERATURE",
+                _non_negative_float_with_default("LOCAL_GENERATION_TEMPERATURE", 0.7),
             ),
+            local_generation_top_k=_positive_int_with_default("LOCAL_LLM_TOP_K", 20),
             local_generation_top_p=_positive_float_with_default(
-                "LOCAL_GENERATION_TOP_P",
-                0.9,
+                "LOCAL_LLM_TOP_P",
+                _positive_float_with_default("LOCAL_GENERATION_TOP_P", 0.9),
             ),
-            local_generation_seed=_optional_int("LOCAL_GENERATION_SEED"),
+            local_generation_min_p=_non_negative_float_with_default("LOCAL_LLM_MIN_P", 0.0),
+            local_generation_presence_penalty=_non_negative_float_with_default(
+                "LOCAL_LLM_PRESENCE_PENALTY",
+                1.5,
+            ),
+            local_generation_thinking=_boolean("LOCAL_LLM_THINKING", default=False),
+            local_generation_seed=_optional_int("LOCAL_LLM_SEED")
+            or _optional_int("LOCAL_GENERATION_SEED"),
             local_generation_low_confidence_threshold=_positive_float_with_default(
                 "LOCAL_GENERATION_LOW_CONFIDENCE_THRESHOLD",
                 0.55,

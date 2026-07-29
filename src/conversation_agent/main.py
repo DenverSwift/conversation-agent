@@ -195,10 +195,16 @@ def create_reply_client(settings: Settings) -> Any:
         local_provider = OpenAICompatibleLocalProvider(
             base_url=settings.local_generation_base_url,
             model=settings.local_generation_model,
+            api_key=settings.local_generation_api_key,
             timeout_seconds=settings.local_generation_timeout_seconds,
             max_output_tokens=settings.local_generation_max_output_tokens,
             temperature=settings.local_generation_temperature,
+            top_k=settings.local_generation_top_k,
             top_p=settings.local_generation_top_p,
+            min_p=settings.local_generation_min_p,
+            presence_penalty=settings.local_generation_presence_penalty,
+            context_tokens=settings.local_generation_context_tokens,
+            thinking=settings.local_generation_thinking,
             seed=settings.local_generation_seed,
         )
     else:

@@ -89,8 +89,16 @@ class GenerationResult:
     handoff_required: bool = False
     confidence: float = 0.0
     provider: str = "unknown"
+    backend: str = "unknown"
+    model: str | None = None
     raw_output: str = ""
     latency_ms: int = 0
+    ttft_ms: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    tokens_per_second: float | None = None
+    retry_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -130,4 +138,3 @@ class HybridResult:
             },
             "route": list(self.route),
         }
-
