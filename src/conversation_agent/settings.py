@@ -44,12 +44,30 @@ class Settings:
         ".runtime/style/compiler_state.sqlite3"
     )
     style_analysis_batch_size: int = 50
+    generation_mode: str = "openai_only"
+    local_agent_id: str = "informal-manager"
+    local_generation_provider: str = "fake"
+    local_generation_base_url: str = "http://127.0.0.1:8080/v1"
+    local_generation_model: str = "telegram-qwen3-0.6b"
+    local_generation_timeout_seconds: float = 20.0
+    local_generation_max_output_tokens: int = 256
+    local_generation_temperature: float = 0.7
+    local_generation_top_p: float = 0.9
+    local_generation_seed: int | None = None
+    local_generation_low_confidence_threshold: float = 0.55
+    local_context_budget_chars: int = 2400
     log_path: Path = Path("logs/agent.log")
     runtime_dir: Path = Path(".runtime")
 
     @classmethod
     def load(cls, env_file: str | Path = ".env") -> Settings:
         load_env_file(Path(env_file))
+        generation_mode = _choice(
+            "GENERATION_MODE",
+            "openai_only",
+            {"local_only", "local_with_fallback", "openai_only", "compare_shadow"},
+        )
+        openai_is_required = generation_mode != "local_only"
         trainer_enabled = _boolean("TRAINER_BOT_ENABLED", default=False)
         trainer_token = _optional("TRAINER_BOT_TOKEN")
         trainer_user_id = _optional_int("TRAINER_TELEGRAM_USER_ID")
@@ -70,8 +88,16 @@ class Settings:
             telegram_api_id=_required_int("TELEGRAM_API_ID"),
             telegram_api_hash=_required("TELEGRAM_API_HASH"),
             telegram_session_path=_required("TELEGRAM_SESSION_PATH"),
-            openai_api_key=_required("OPENAI_API_KEY"),
-            openai_model=_required("OPENAI_MODEL"),
+            openai_api_key=(
+                _required("OPENAI_API_KEY")
+                if openai_is_required
+                else _with_default("OPENAI_API_KEY", "local-disabled")
+            ),
+            openai_model=(
+                _required("OPENAI_MODEL")
+                if openai_is_required
+                else _with_default("OPENAI_MODEL", "local-disabled")
+            ),
             allowed_telegram_user_id=_required_int("ALLOWED_TELEGRAM_USER_ID"),
             context_message_limit=_positive_int("CONTEXT_MESSAGE_LIMIT"),
             readme_path=Path(_required("README_PATH")),
@@ -143,6 +169,46 @@ class Settings:
                 "STYLE_ANALYSIS_BATCH_SIZE",
                 50,
             ),
+            generation_mode=generation_mode,
+            local_agent_id=_with_default("LOCAL_AGENT_ID", "informal-manager"),
+            local_generation_provider=_choice(
+                "LOCAL_GENERATION_PROVIDER",
+                "fake",
+                {"fake", "openai_compatible"},
+            ),
+            local_generation_base_url=_with_default(
+                "LOCAL_GENERATION_BASE_URL",
+                "http://127.0.0.1:8080/v1",
+            ),
+            local_generation_model=_with_default(
+                "LOCAL_GENERATION_MODEL",
+                "telegram-qwen3-0.6b",
+            ),
+            local_generation_timeout_seconds=_positive_float_with_default(
+                "LOCAL_GENERATION_TIMEOUT_SECONDS",
+                20.0,
+            ),
+            local_generation_max_output_tokens=_positive_int_with_default(
+                "LOCAL_GENERATION_MAX_OUTPUT_TOKENS",
+                256,
+            ),
+            local_generation_temperature=_non_negative_float_with_default(
+                "LOCAL_GENERATION_TEMPERATURE",
+                0.7,
+            ),
+            local_generation_top_p=_positive_float_with_default(
+                "LOCAL_GENERATION_TOP_P",
+                0.9,
+            ),
+            local_generation_seed=_optional_int("LOCAL_GENERATION_SEED"),
+            local_generation_low_confidence_threshold=_positive_float_with_default(
+                "LOCAL_GENERATION_LOW_CONFIDENCE_THRESHOLD",
+                0.55,
+            ),
+            local_context_budget_chars=_positive_int_with_default(
+                "LOCAL_CONTEXT_BUDGET_CHARS",
+                2400,
+            ),
         )
 
 
@@ -192,6 +258,28 @@ def _positive_float(name: str) -> float:
     return parsed
 
 
+def _positive_float_with_default(name: str, default: float) -> float:
+    raw_value = _with_default(name, str(default))
+    try:
+        parsed = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"Setting {name} must be a number") from exc
+    if parsed <= 0:
+        raise ValueError(f"Setting {name} must be greater than zero")
+    return parsed
+
+
+def _non_negative_float_with_default(name: str, default: float) -> float:
+    raw_value = _with_default(name, str(default))
+    try:
+        parsed = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"Setting {name} must be a number") from exc
+    if parsed < 0:
+        raise ValueError(f"Setting {name} must be non-negative")
+    return parsed
+
+
 def _with_default(name: str, default: str) -> str:
     value = os.environ.get(name, default).strip()
     if not value:
@@ -235,3 +323,11 @@ def _boolean(name: str, *, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"Setting {name} must be true or false")
+
+
+def _choice(name: str, default: str, allowed: set[str]) -> str:
+    value = _with_default(name, default)
+    if value not in allowed:
+        options = ", ".join(sorted(allowed))
+        raise ValueError(f"Setting {name} must be one of: {options}")
+    return value

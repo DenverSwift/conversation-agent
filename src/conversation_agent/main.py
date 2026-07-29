@@ -7,11 +7,23 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from conversation_agent.agent.prompt_builder import build_instructions
 from conversation_agent.agent.responder import Responder
 from conversation_agent.llm.openai_client import OpenAIReplyClient
+from conversation_agent.local_slm.cli import add_local_slm_parsers, run_local_slm_command
+from conversation_agent.local_slm.context import LocalContextBuilder
+from conversation_agent.local_slm.models import GenerationMode
+from conversation_agent.local_slm.openai_fallback import OpenAIReplyFallbackProvider
+from conversation_agent.local_slm.policy import RuleBasedDialoguePolicy
+from conversation_agent.local_slm.provider import (
+    FakeLocalGenerationProvider,
+    OpenAICompatibleLocalProvider,
+)
+from conversation_agent.local_slm.reply_client import LocalRouterReplyClient
+from conversation_agent.local_slm.router import HybridGenerationRouter
+from conversation_agent.local_slm.validator import OutputValidator
 from conversation_agent.runtime import AlreadyRunningError, SingleInstanceLock
 from conversation_agent.settings import Settings
 from conversation_agent.storage.repository import FeedbackRepository
@@ -26,12 +38,19 @@ logger = logging.getLogger(__name__)
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the Telegram conversation agent.")
-    parser.add_argument("command", nargs="?", choices=("run", "login"), default="run")
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("run").set_defaults(func=None)
+    subparsers.add_parser("login").set_defaults(func=None)
+    add_local_slm_parsers(subparsers)
     args = parser.parse_args()
+    if args.command is None:
+        args.command = "run"
 
     try:
         if args.command == "login":
             asyncio.run(login())
+        elif hasattr(args, "func") and args.func is not None:
+            return run_local_slm_command(args)
         else:
             asyncio.run(run_agent())
     except KeyboardInterrupt:
@@ -92,11 +111,7 @@ async def run_agent() -> None:
             me = await active_client.get_me()
             own_user_id = int(me.id)
             instructions = build_instructions(settings.readme_path)
-            reply_client = OpenAIReplyClient(
-                api_key=settings.openai_api_key,
-                model=settings.openai_model,
-                timeout_seconds=settings.openai_timeout_seconds,
-            )
+            reply_client = create_reply_client(settings)
             responder = Responder(
                 reply_client,
                 instructions,
@@ -166,6 +181,47 @@ def create_style_runtime(
         retrieval_limit=settings.style_retrieval_limit,
         rules_max_chars=settings.style_rules_max_chars,
         examples_max_chars=settings.style_examples_max_chars,
+    )
+
+
+def create_reply_client(settings: Settings) -> Any:
+    if settings.generation_mode == "openai_only":
+        return OpenAIReplyClient(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            timeout_seconds=settings.openai_timeout_seconds,
+        )
+    if settings.local_generation_provider == "openai_compatible":
+        local_provider = OpenAICompatibleLocalProvider(
+            base_url=settings.local_generation_base_url,
+            model=settings.local_generation_model,
+            timeout_seconds=settings.local_generation_timeout_seconds,
+            max_output_tokens=settings.local_generation_max_output_tokens,
+            temperature=settings.local_generation_temperature,
+            top_p=settings.local_generation_top_p,
+            seed=settings.local_generation_seed,
+        )
+    else:
+        local_provider = FakeLocalGenerationProvider()
+    fallback_provider = None
+    if settings.generation_mode in {"local_with_fallback", "compare_shadow"}:
+        fallback_provider = OpenAIReplyFallbackProvider(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            timeout_seconds=settings.openai_timeout_seconds,
+        )
+    router = HybridGenerationRouter(
+        local_provider=local_provider,
+        validator=OutputValidator(),
+        mode=cast(GenerationMode, settings.generation_mode),
+        fallback_provider=fallback_provider,
+        low_confidence_threshold=settings.local_generation_low_confidence_threshold,
+    )
+    return LocalRouterReplyClient(
+        policy=RuleBasedDialoguePolicy(),
+        context_builder=LocalContextBuilder(budget_chars=settings.local_context_budget_chars),
+        router=router,
+        agent_id=settings.local_agent_id,
     )
 
 
