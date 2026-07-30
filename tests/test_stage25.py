@@ -299,7 +299,9 @@ def test_renderer_retry_does_not_repeat_policy() -> None:
     assert result.renderer_name == "local_qwen_renderer"
 
 
-def test_policy_repairs_invalid_contract_without_writing_a_message() -> None:
+def test_policy_repairs_invalid_contract_without_writing_a_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     invalid = _contract().to_dict()
     invalid.update(
         {
@@ -335,7 +337,7 @@ def test_policy_repairs_invalid_contract_without_writing_a_message() -> None:
 
     policy = GPTContractPolicy(api_key="test")
     client = FakeClient()
-    policy._client = client
+    monkeypatch.setattr(policy, "_client", client)
     plan = asyncio.run(policy.plan(_context()))
     assert policy.calls == 1
     assert client.calls == 2
