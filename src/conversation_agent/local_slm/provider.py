@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
 from conversation_agent.local_slm.models import Action, GenerationRequest, GenerationResult
@@ -20,6 +21,17 @@ class LocalModelError(RuntimeError):
 
 class LocalSchemaUnsupported(LocalModelError):
     """Raised when a local endpoint rejects JSON Schema response formatting."""
+
+
+@dataclass(frozen=True)
+class LocalStructuredReply:
+    text: str
+    model: str
+    latency_ms: int
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    tokens_per_second: float | None
 
 
 class GenerationProvider(Protocol):
@@ -196,6 +208,57 @@ class OpenAICompatibleLocalProvider:
             total_tokens=usage.get("total_tokens"),
             tokens_per_second=_tokens_per_second(completion_tokens, latency_ms),
             retry_count=retry_count,
+        )
+
+    async def create_structured_reply(
+        self,
+        *,
+        instructions: str,
+        user_content: str,
+        schema: dict[str, Any],
+        max_output_tokens: int,
+    ) -> LocalStructuredReply:
+        """Perform one structured local call; caller owns semantic retry policy."""
+        started = time.perf_counter()
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": self.temperature,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "min_p": self.min_p,
+            "presence_penalty": self.presence_penalty,
+            "max_tokens": min(max_output_tokens, self.max_output_tokens),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "contract_renderer_response",
+                    "strict": True,
+                    "schema": schema,
+                },
+            },
+            "chat_template_kwargs": {"enable_thinking": self.thinking},
+            "stream": False,
+        }
+        if self.seed is not None:
+            payload["seed"] = self.seed
+        raw = await asyncio.to_thread(self._post_json, "/chat/completions", payload)
+        text = _extract_text(raw)
+        _raise_for_thinking(json.dumps(raw, ensure_ascii=False), ())
+        usage = _extract_usage(raw)
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        completion_tokens = usage.get("completion_tokens")
+        return LocalStructuredReply(
+            text=text,
+            model=self.model,
+            latency_ms=latency_ms,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=completion_tokens,
+            total_tokens=usage.get("total_tokens"),
+            tokens_per_second=_tokens_per_second(completion_tokens, latency_ms),
         )
 
     def _build_payload(

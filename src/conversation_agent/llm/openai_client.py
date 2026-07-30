@@ -47,6 +47,7 @@ class OpenAIReplyClient:
         instructions: str,
         messages: list[dict[str, str]],
         schema: dict[str, Any],
+        schema_name: str = "telegram_response",
         max_output_tokens: int,
         temperature: float,
         top_p: float,
@@ -60,7 +61,7 @@ class OpenAIReplyClient:
             text={
                 "format": {
                     "type": "json_schema",
-                    "name": "telegram_response",
+                    "name": schema_name,
                     "schema": schema,
                     "strict": True,
                 }
