@@ -25,6 +25,7 @@ from conversation_agent.local_slm.stage2_review import (
     reveal_mapping,
     save_human_review,
 )
+from conversation_agent.local_slm.stage2_review_ui import ReviewUIState
 from conversation_agent.local_slm.stage2_runner import (
     Stage2RunOptions,
     _build_request,
@@ -395,6 +396,49 @@ def test_human_review_is_saved_after_each_scenario(tmp_path: Path) -> None:
     )
     assert path.is_file()
     assert json.loads(path.read_text(encoding="utf-8"))["blind"] is True
+
+
+def test_review_ui_saves_three_point_button_ratings(tmp_path: Path) -> None:
+    asyncio.run(
+        run_stage2_benchmark(
+            _options(tmp_path),
+            provider_overrides=_providers(),
+            machine_override={"test": True},
+        )
+    )
+    state = ReviewUIState(
+        run_dir=tmp_path / "run",
+        reviewer="ui-reviewer",
+        seed=42,
+    )
+    candidate: dict[str, Any] = {
+        dimension: 3 for dimension in RATING_DIMENSIONS
+    }
+    candidate.update(
+        {
+            "correct_action": "yes",
+            "hallucination": "no",
+            "bot_like": "no",
+            "needs_human_edit": "minor",
+        }
+    )
+    pair_id = state.pairs[0].pair_id
+    result = state.save(
+        pair_id,
+        {
+            "winner": "tie_good",
+            "candidate_A": dict(candidate),
+            "candidate_B": dict(candidate),
+        },
+    )
+    snapshot = state.snapshot()
+    assert result["saved"] is True
+    assert result["reviewed"] == 1
+    assert snapshot["items"][0]["reviewed"] is True
+    assert snapshot["items"][0]["ratings"]["candidate_A"]["naturalness"] == 3
+    serialized = json.dumps(snapshot)
+    assert "local_qwen" not in serialized
+    assert "openai_gpt4o_mini" not in serialized
 
 
 def test_report_handles_incomplete_human_review(tmp_path: Path) -> None:

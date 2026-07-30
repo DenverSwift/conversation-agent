@@ -29,6 +29,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"conversation_agent.local_slm" = ["assets/*.html", "assets/*.css", "assets/*.js"]
+
 [tool.conversation-agent]
 cup-version = "AA.2"
 

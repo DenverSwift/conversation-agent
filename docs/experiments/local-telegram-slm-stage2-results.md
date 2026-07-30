@@ -81,7 +81,7 @@ generated or inferred during implementation.
 Resume system comparison without repeating successful calls:
 
 ```powershell
-python -m conversation_agent benchmark stage2-run `
+uv run python -m conversation_agent benchmark stage2-run `
   --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
   --mode system_comparison `
   --providers local_qwen,openai_gpt4o_mini `
@@ -93,7 +93,7 @@ python -m conversation_agent benchmark stage2-run `
 Retry the saved local provider error:
 
 ```powershell
-python -m conversation_agent benchmark stage2-run `
+uv run python -m conversation_agent benchmark stage2-run `
   --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
   --mode system_comparison `
   --providers local_qwen,openai_gpt4o_mini `
@@ -106,17 +106,16 @@ python -m conversation_agent benchmark stage2-run `
 Start or resume blind review:
 
 ```powershell
-python -m conversation_agent benchmark stage2-review `
+uv run python -m conversation_agent benchmark stage2-review-ui `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviewer denver `
-  --seed 42 `
-  --only-unreviewed
+  --seed 42
 ```
 
 Generate the current report:
 
 ```powershell
-python -m conversation_agent benchmark stage2-report `
+uv run python -m conversation_agent benchmark stage2-report `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviews .runtime/benchmarks/stage2-system-v1/reviews `
   --output .runtime/benchmarks/stage2-system-v1/report

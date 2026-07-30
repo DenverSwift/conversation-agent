@@ -207,14 +207,14 @@ python -m conversation_agent local-model-doctor
 Run both real comparisons:
 
 ```powershell
-python -m conversation_agent benchmark stage2-run `
+uv run python -m conversation_agent benchmark stage2-run `
   --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
   --mode system_comparison `
   --providers local_qwen,openai_gpt4o_mini `
   --output .runtime/benchmarks/stage2-system-v1 `
   --seed 42
 
-python -m conversation_agent benchmark stage2-run `
+uv run python -m conversation_agent benchmark stage2-run `
   --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
   --mode same_context `
   --providers local_qwen,openai_gpt4o_mini `
@@ -230,7 +230,21 @@ Run the blind review without revealing provider, model, latency, token counts,
 or retry metadata:
 
 ```powershell
-python -m conversation_agent benchmark stage2-review `
+uv run python -m conversation_agent benchmark stage2-review-ui `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --reviewer denver `
+  --seed 42
+```
+
+The local browser UI uses button-only controls. Human quality dimensions use a
+three-point `bad / acceptable / good` scale stored as `1 / 3 / 5` for
+compatibility with existing reports. Candidate presets fill all fields and can
+then be adjusted individually. Reviews are saved to the same files as the CLI.
+
+The terminal workflow remains available:
+
+```powershell
+uv run python -m conversation_agent benchmark stage2-review `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviewer denver `
   --seed 42 `
@@ -241,7 +255,7 @@ The CLI saves each rating immediately and supports `skip`, `back`, `progress`,
 and category filtering. Reveal the deterministic A/B mapping separately:
 
 ```powershell
-python -m conversation_agent benchmark stage2-review `
+uv run python -m conversation_agent benchmark stage2-review `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviewer denver `
   --seed 42 `
@@ -251,7 +265,7 @@ python -m conversation_agent benchmark stage2-review `
 Reveal does not modify saved ratings. Generate a report at any point:
 
 ```powershell
-python -m conversation_agent benchmark stage2-report `
+uv run python -m conversation_agent benchmark stage2-report `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviews .runtime/benchmarks/stage2-system-v1/reviews `
   --output .runtime/benchmarks/stage2-system-v1/report

@@ -26,6 +26,7 @@ from conversation_agent.local_slm.runtime_config import LocalLLMConfig
 from conversation_agent.local_slm.stage2_dataset import import_private_benchmark
 from conversation_agent.local_slm.stage2_report import generate_stage2_report
 from conversation_agent.local_slm.stage2_review import run_interactive_review
+from conversation_agent.local_slm.stage2_review_ui import run_review_ui
 from conversation_agent.local_slm.stage2_runner import (
     Stage2RunOptions,
     run_stage2_benchmark,
@@ -116,6 +117,18 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     review.add_argument("--only-unreviewed", action="store_true")
     review.add_argument("--reveal", action="store_true")
     review.set_defaults(func=_benchmark_stage2_review)
+
+    review_ui = benchmark_sub.add_parser(
+        "stage2-review-ui",
+        help="Open the blind human A/B review web interface",
+    )
+    review_ui.add_argument("--run", required=True)
+    review_ui.add_argument("--reviewer", required=True)
+    review_ui.add_argument("--seed", type=int, default=42)
+    review_ui.add_argument("--category")
+    review_ui.add_argument("--port", type=int, default=8765)
+    review_ui.add_argument("--no-open", action="store_true")
+    review_ui.set_defaults(func=_benchmark_stage2_review_ui)
 
     report = benchmark_sub.add_parser(
         "stage2-report",
@@ -392,6 +405,17 @@ def _benchmark_stage2_review(args: argparse.Namespace) -> dict[str, Any]:
         category=args.category,
         only_unreviewed=bool(args.only_unreviewed),
         reveal=bool(args.reveal),
+    )
+
+
+def _benchmark_stage2_review_ui(args: argparse.Namespace) -> dict[str, Any]:
+    return run_review_ui(
+        run_dir=Path(args.run),
+        reviewer=args.reviewer,
+        seed=args.seed,
+        category=args.category,
+        port=args.port,
+        open_browser=not bool(args.no_open),
     )
 
 
