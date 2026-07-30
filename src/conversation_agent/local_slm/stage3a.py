@@ -284,7 +284,11 @@ async def _execute(
         )
         return {
             "output": output,
-            "hard": hard_validator.validate(contract, output),
+            "hard": hard_validator.validate(
+                contract,
+                output,
+                incoming_messages=_incoming_messages(context),
+            ),
             "safety": safety_validator.validate(contract, output),
             "soft": soft_evaluator.evaluate(contract.style, output),
             "retry_count": 0,
@@ -309,7 +313,11 @@ async def _execute(
         )
         rendered = current
         usage = _add_usage(usage, current.usage)
-        hard = hard_validator.validate(contract, current.output)
+        hard = hard_validator.validate(
+            contract,
+            current.output,
+            incoming_messages=_incoming_messages(context),
+        )
         safety = safety_validator.validate(contract, current.output)
         if hard.valid and safety.valid:
             break
@@ -636,7 +644,11 @@ def _renderer_instructions(contract: ResponseContractV2) -> str:
         "and SafetyConstraints are mandatory. AdaptiveStylePlan is a per-turn preference, "
         "not permission to invent facts or mirror aggression. Do not reconsider action. "
         "Do not explain reasoning, mention AI, repeat incoming text, add promises, prices, "
-        "or unknown facts. Return natural message bubbles only.\nResponseContractV2:\n"
+        "or unknown facts. If sensitive_data_strategy is refuse_collection, explicitly say "
+        "not to send sensitive data; never ask the contact to send passport, card, password, "
+        "or verification data anywhere. Handoff may only acknowledge and request a human; "
+        "never claim that a transfer already happened. Return natural message bubbles only."
+        "\nResponseContractV2:\n"
         + json.dumps(contract.to_dict(), ensure_ascii=False, separators=(",", ":"))
     )
 
@@ -649,7 +661,10 @@ def _renderer_schema(contract: ResponseContractV2) -> dict[str, Any]:
         if action in {"reply", "handoff"}
         else 0
     )
-    critical_length = max(40, contract.style.preferred_character_range[1] * 2)
+    critical_length = max(
+        contract.style.preferred_character_range[1] * 3,
+        contract.style.preferred_character_range[0] + 80,
+    )
     return {
         "type": "object",
         "additionalProperties": False,
@@ -768,6 +783,14 @@ def _add_usage(left: Usage, right: Usage) -> Usage:
         prompt_tokens=add(left.prompt_tokens, right.prompt_tokens),
         completion_tokens=add(left.completion_tokens, right.completion_tokens),
         total_tokens=add(left.total_tokens, right.total_tokens),
+    )
+
+
+def _incoming_messages(context: PolicyContext) -> tuple[str, ...]:
+    return tuple(
+        item.get("content", "")
+        for item in context.conversation
+        if item.get("role") in {"contact", "user"}
     )
 
 

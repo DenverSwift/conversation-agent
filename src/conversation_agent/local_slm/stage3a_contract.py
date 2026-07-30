@@ -11,7 +11,10 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from conversation_agent.local_slm.models import GenerationResult
-from conversation_agent.local_slm.stage25_contract import ResponseContract
+from conversation_agent.local_slm.stage25_contract import (
+    ResponseContract,
+    analyze_incoming_copy,
+)
 
 ResponseContractV1 = ResponseContract
 HUMAN_STYLE_SOURCES = frozenset(
@@ -574,6 +577,8 @@ class HardSemanticValidator:
         self,
         contract: ResponseContractV2,
         output: GenerationResult,
+        *,
+        incoming_messages: tuple[str, ...] = (),
     ) -> ValidationResult:
         semantic = contract.semantic
         text = "\n".join(output.messages)
@@ -603,7 +608,15 @@ class HardSemanticValidator:
                 re.search(r"(?i)<\/?think|reasoning_content|\ufffd", text)
             ),
             "adaptive_critical_length": len(text)
-            <= max(40, contract.style.preferred_character_range[1] * 2),
+            <= max(
+                contract.style.preferred_character_range[1] * 3,
+                contract.style.preferred_character_range[0] + 80,
+            ),
+            "no_incoming_copy": not analyze_incoming_copy(
+                output.messages,
+                incoming_messages,
+                allowed_facts=contract.semantic.allowed_facts,
+            ),
         }
         errors = tuple(key for key, passed in checks.items() if not passed)
         return ValidationResult(not errors, errors, checks)

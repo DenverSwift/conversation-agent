@@ -283,6 +283,12 @@ def test_hard_failure_is_separate_from_soft_deviation() -> None:
     unsafe = _output("Гарантирую, что отправлю сегодня")
     assert HardSemanticValidator().validate(contract, unsafe).valid is False
     assert SafetyValidator().validate(contract, unsafe).valid is False
+    copied = HardSemanticValidator().validate(
+        contract,
+        _output("Хочу поговорить с руководителем"),
+        incoming_messages=("Хочу поговорить с руководителем",),
+    )
+    assert "no_incoming_copy" in copied.errors
 
 
 def _example(
