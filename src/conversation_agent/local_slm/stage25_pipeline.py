@@ -292,10 +292,16 @@ class OpenAIContractRenderer:
 class LocalQwenContractRenderer:
     renderer_name = "local_qwen_renderer"
 
-    def __init__(self, provider: OpenAICompatibleLocalProvider) -> None:
+    def __init__(
+        self,
+        provider: OpenAICompatibleLocalProvider,
+        *,
+        no_think_prefix: bool = True,
+    ) -> None:
         self.provider = provider
         self.model = provider.model
         self.calls = 0
+        self.no_think_prefix = no_think_prefix
 
     async def render(
         self,
@@ -307,7 +313,10 @@ class LocalQwenContractRenderer:
     ) -> RenderedMessage:
         self.calls += 1
         reply = await self.provider.create_structured_reply(
-            instructions="/no_think\n" + _renderer_instructions(contract),
+            instructions=(
+                ("/no_think\n" if self.no_think_prefix else "")
+                + _renderer_instructions(contract)
+            ),
             user_content=_renderer_context(
                 context,
                 contract,
@@ -370,6 +379,7 @@ async def execute_renderer_with_plan(
             contract,
             output,
             incoming_messages=_incoming_messages(context),
+            allowed_facts=context.known_facts,
         )
         return ContractPipelineResult(
             contract=contract,
@@ -404,6 +414,7 @@ async def execute_renderer_with_plan(
             contract,
             rendered.result,
             incoming_messages=_incoming_messages(context),
+            allowed_facts=context.known_facts,
         )
         if validation.valid:
             break
@@ -515,8 +526,10 @@ def _renderer_instructions(contract: ResponseContract) -> str:
     return (
         "Render a natural Russian Telegram response that follows the supplied "
         "ResponseContract exactly. Return only strict JSON. Do not reconsider the action. "
-        "Do not add facts. Avoid assistant language, headings, lists, repetition, and "
-        "explanations. Keep each bubble conversational and concise.\nContract:\n"
+        "Do not add facts or promises. Never copy, repeat, or paraphrase the contact's "
+        "message as a substitute for an answer. Avoid assistant language, headings, "
+        "lists, repetition, process explanations, and internal reasoning. Write natural "
+        "Russian and keep each bubble conversational and concise.\nContract:\n"
         + json.dumps(contract.to_dict(), ensure_ascii=False, separators=(",", ":"))
     )
 

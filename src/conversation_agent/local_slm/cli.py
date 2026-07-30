@@ -40,6 +40,11 @@ from conversation_agent.local_slm.stage25_runner import (
     Stage25RunOptions,
     run_stage25_benchmark,
 )
+from conversation_agent.local_slm.stage26 import (
+    Stage26Options,
+    generate_stage26_report,
+    run_stage26,
+)
 from conversation_agent.local_slm.training import training_dry_run
 from conversation_agent.local_slm.validator import OutputValidator
 
@@ -53,6 +58,7 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     simulate.set_defaults(func=_simulate)
 
     doctor = subparsers.add_parser("local-model-doctor", help="Check real local model endpoint")
+    doctor.add_argument("--profile")
     doctor.set_defaults(func=_doctor)
 
     smoke = subparsers.add_parser("local-model-smoke", help="Run real local model smoke scenarios")
@@ -197,6 +203,32 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     stage25_report.add_argument("--output", required=True)
     stage25_report.set_defaults(func=_benchmark_stage25_report)
 
+    stage26 = benchmark_sub.add_parser(
+        "stage26-run",
+        help="Run the Ruadapt renderer-only qualification",
+    )
+    stage26.add_argument("--dataset", required=True)
+    stage26.add_argument("--renderer", required=True)
+    stage26.add_argument("--contracts-from", required=True)
+    stage26.add_argument("--baseline", required=True)
+    stage26.add_argument("--output", required=True)
+    stage26.add_argument("--seed", type=int, default=42)
+    stage26.add_argument("--scenario-limit", type=int)
+    stage26.add_argument("--category")
+    stage26.add_argument("--resume", action="store_true")
+    stage26.add_argument("--retry-errors", action="store_true")
+    stage26.add_argument("--gpu-required", action="store_true", default=True)
+    stage26.set_defaults(func=_benchmark_stage26_run)
+
+    stage26_report = benchmark_sub.add_parser(
+        "stage26-report",
+        help="Generate the Ruadapt renderer qualification report",
+    )
+    stage26_report.add_argument("--run", required=True)
+    stage26_report.add_argument("--baseline", required=True)
+    stage26_report.add_argument("--output", required=True)
+    stage26_report.set_defaults(func=_benchmark_stage26_report)
+
 
 def run_local_slm_command(args: argparse.Namespace) -> int:
     result = args.func(args)
@@ -280,8 +312,63 @@ def _make_provider(config: LocalLLMConfig, *, fake: bool) -> FakeLocalGeneration
 
 
 def _doctor(args: argparse.Namespace) -> dict[str, Any]:
-    del args
+    if args.profile == "ruadapt-qwen3-4b":
+        return asyncio.run(_doctor_ruadapt())
     return asyncio.run(_doctor_async(LocalLLMConfig.from_env()))
+
+
+async def _doctor_ruadapt() -> dict[str, Any]:
+    from conversation_agent.local_slm.renderer_registry import get_renderer_profile
+
+    profile_name = json.loads(
+        Path(".runtime/local_slm/ruadapt-model.json").read_text(
+            encoding="utf-8-sig"
+        )
+    )["profile"]
+    profile = get_renderer_profile(profile_name)
+    status = json.loads(
+        Path(".runtime/local_slm/ruadapt-gpu-status.json").read_text(
+            encoding="utf-8-sig"
+        )
+    )
+    config = LocalLLMConfig(
+        base_url=profile.base_url,
+        model=profile.model_alias,
+        max_output_tokens=profile.max_output_tokens,
+        context_tokens=profile.context_tokens,
+        temperature=profile.temperature,
+        top_p=profile.top_p,
+        presence_penalty=0.0,
+        repetition_penalty=profile.repetition_penalty,
+        thinking=False,
+        timeout_seconds=60.0,
+    )
+    base = await _doctor_async(config)
+    messages = " ".join(str(item) for item in base.get("Generated messages", []))
+    russian = bool(__import__("re").search(r"[а-яё]", messages.casefold()))
+    ready = (
+        base.get("Ready") == "YES"
+        and status.get("ready") is True
+        and status.get("quantization") == profile.quantization
+        and status.get("cpu_fallback") is False
+        and russian
+    )
+    return {
+        **base,
+        "Backend": "llama.cpp CUDA",
+        "Model family": "RuadaptQwen3",
+        "Repository": profile.repository,
+        "Resolved revision": profile.revision,
+        "Quantization": profile.quantization,
+        "Context": profile.context_tokens,
+        "GPU": status.get("gpu_name"),
+        "GPU offload": "confirmed" if status.get("ready") else "NO",
+        "Offloaded layers": status.get("offloaded_layers"),
+        "VRAM usage": status.get("vram_used_mib"),
+        "CPU fallback": status.get("cpu_fallback"),
+        "Russian completion": "OK" if russian else "NO",
+        "Ready": "YES" if ready else "NO",
+    }
 
 
 async def _doctor_async(config: LocalLLMConfig) -> dict[str, Any]:
@@ -313,6 +400,7 @@ async def _doctor_async(config: LocalLLMConfig) -> dict[str, Any]:
         output["Structured output"] = "OK" if validation.valid else "NO"
         output["Non-thinking"] = "OK" if "reasoning_output" not in validation.errors else "NO"
         output["Parsed action"] = result.action
+        output["Generated messages"] = list(result.messages)
         output["Latency ms"] = result.latency_ms
         output["Prompt tokens"] = result.prompt_tokens
         output["Completion tokens"] = result.completion_tokens
@@ -538,6 +626,34 @@ def _benchmark_stage25_run(args: argparse.Namespace) -> dict[str, Any]:
 
 def _benchmark_stage25_report(args: argparse.Namespace) -> dict[str, Any]:
     return generate_stage25_report(
+        run_dir=Path(args.run),
+        baseline_dir=Path(args.baseline),
+        output_dir=Path(args.output),
+    )
+
+
+def _benchmark_stage26_run(args: argparse.Namespace) -> dict[str, Any]:
+    return asyncio.run(
+        run_stage26(
+            Stage26Options(
+                dataset_path=Path(args.dataset),
+                renderer=args.renderer,
+                contracts_from=Path(args.contracts_from),
+                baseline_dir=Path(args.baseline),
+                output_dir=Path(args.output),
+                seed=args.seed,
+                scenario_limit=args.scenario_limit,
+                category=args.category,
+                resume=args.resume or args.retry_errors,
+                retry_errors=args.retry_errors,
+                gpu_required=bool(args.gpu_required),
+            )
+        )
+    )
+
+
+def _benchmark_stage26_report(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_stage26_report(
         run_dir=Path(args.run),
         baseline_dir=Path(args.baseline),
         output_dir=Path(args.output),

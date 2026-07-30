@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
+from difflib import SequenceMatcher
 from typing import Any, Literal, cast
 
 from conversation_agent.local_slm.models import GenerationResult
@@ -106,12 +107,14 @@ class RendererValidation:
     valid: bool
     errors: tuple[str, ...]
     contract_compliance: dict[str, bool]
+    copy_analysis: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "valid": self.valid,
             "errors": list(self.errors),
             "contract_compliance": dict(self.contract_compliance),
+            "copy_analysis": list(self.copy_analysis),
         }
 
 
@@ -331,10 +334,16 @@ def validate_renderer_output(
     result: GenerationResult,
     *,
     incoming_messages: tuple[str, ...],
+    allowed_facts: tuple[str, ...] = (),
 ) -> RendererValidation:
     messages = tuple(message.strip() for message in result.messages if message.strip())
     text = "\n".join(messages)
     total_characters = sum(len(message) for message in messages)
+    copy_analysis = analyze_incoming_copy(
+        messages,
+        incoming_messages,
+        allowed_facts=tuple(dict.fromkeys(contract.required_facts + allowed_facts)),
+    )
     compliance = {
         "action": result.action == contract.action,
         "bubble_count": len(messages) <= contract.max_bubble_count,
@@ -356,10 +365,7 @@ def validate_renderer_output(
             r"(?m)^\s*(?:#{1,6}\s+|\d+[.)]\s+|[-*]\s+)",
             text,
         ),
-        "repeated_incoming_question": not _repeats_incoming_question(
-            messages,
-            incoming_messages,
-        ),
+        "repeated_incoming_question": not copy_analysis,
         "non_empty_reply": contract.action != "reply" or bool(messages),
         "no_reply_empty": contract.action != "no_reply"
         or (not messages and result.reaction is None),
@@ -378,6 +384,7 @@ def validate_renderer_output(
         valid=not errors,
         errors=errors,
         contract_compliance=compliance,
+        copy_analysis=copy_analysis,
     )
 
 
@@ -511,6 +518,83 @@ def _repeats_incoming_question(
         for message in messages
         if len(_normalize_question(message)) >= 18
     )
+
+
+def analyze_incoming_copy(
+    messages: tuple[str, ...],
+    incoming_messages: tuple[str, ...],
+    *,
+    allowed_facts: tuple[str, ...] = (),
+) -> tuple[dict[str, Any], ...]:
+    """Detect exact, near and partial copies without flagging short fact reuse."""
+    findings: list[dict[str, Any]] = []
+    allowed_tokens = set(_copy_tokens(" ".join(allowed_facts)))
+    for output in messages:
+        output_normalized = _normalize_copy(output)
+        output_tokens = set(_copy_tokens(output))
+        if len(output_normalized) < 10:
+            continue
+        for incoming in incoming_messages:
+            incoming_normalized = _normalize_copy(incoming)
+            if len(incoming_normalized) < 10:
+                continue
+            matcher = SequenceMatcher(None, output_normalized, incoming_normalized)
+            similarity = matcher.ratio()
+            token_union = output_tokens | set(_copy_tokens(incoming))
+            token_overlap = (
+                len(output_tokens & set(_copy_tokens(incoming))) / len(token_union)
+                if token_union
+                else 0.0
+            )
+            match = matcher.find_longest_match(
+                0,
+                len(output_normalized),
+                0,
+                len(incoming_normalized),
+            )
+            fragment = output_normalized[match.a : match.a + match.size]
+            fragment_ratio = match.size / max(1, len(incoming_normalized))
+            fact_reuse = (
+                len(output_tokens) <= 7
+                and bool(output_tokens)
+                and output_tokens <= allowed_tokens
+            )
+            rule = None
+            if output_normalized == incoming_normalized:
+                rule = "exact_normalized_copy"
+            elif similarity >= 0.9:
+                rule = "near_copy"
+            elif (
+                match.size >= 18
+                and fragment_ratio >= 0.55
+                and token_overlap >= 0.45
+            ):
+                rule = "partial_incoming_copy"
+            if rule and not fact_reuse:
+                findings.append(
+                    {
+                        "rule_id": rule,
+                        "similarity": round(similarity, 6),
+                        "token_overlap": round(token_overlap, 6),
+                        "matched_fragment": fragment,
+                    }
+                )
+    unique = {
+        (
+            item["rule_id"],
+            item["matched_fragment"],
+        ): item
+        for item in findings
+    }
+    return tuple(unique.values())
+
+
+def _normalize_copy(value: str) -> str:
+    return " ".join(_copy_tokens(value))
+
+
+def _copy_tokens(value: str) -> list[str]:
+    return re.findall(r"[0-9a-zа-яё]+", value.casefold())
 
 
 def _normalize_question(value: str) -> str:
