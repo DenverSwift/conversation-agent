@@ -370,6 +370,9 @@ def aggregate_stage3a_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "soft_style_fit": _average(
             [float(item.get("fit", 0.0)) for item in soft]
         ),
+        "average_style_confidence": _average(
+            [float(plan.get("confidence", 0.0)) for plan in style_plans]
+        ),
         **{
             name: _average(
                 [
