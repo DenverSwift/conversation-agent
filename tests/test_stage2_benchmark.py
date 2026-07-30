@@ -247,6 +247,28 @@ def test_resume_does_not_repeat_completed_provider_calls(tmp_path: Path) -> None
     assert providers["openai_gpt4o_mini"].calls == 1
 
 
+def test_run_fingerprint_is_reproducible_across_output_directories(
+    tmp_path: Path,
+) -> None:
+    first_options = _options(tmp_path / "first")
+    second_options = _options(tmp_path / "second")
+    first = asyncio.run(
+        run_stage2_benchmark(
+            first_options,
+            provider_overrides=_providers(),
+            machine_override={"test": True},
+        )
+    )
+    second = asyncio.run(
+        run_stage2_benchmark(
+            second_options,
+            provider_overrides=_providers(),
+            machine_override={"test": True},
+        )
+    )
+    assert first["run_fingerprint"] == second["run_fingerprint"]
+
+
 def test_result_is_written_atomically_and_contains_no_api_key(tmp_path: Path) -> None:
     providers = _providers()
     asyncio.run(
