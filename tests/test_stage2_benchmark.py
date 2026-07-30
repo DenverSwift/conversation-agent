@@ -31,6 +31,7 @@ from conversation_agent.local_slm.stage2_runner import (
     _build_request,
     run_stage2_benchmark,
 )
+from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
 from conversation_agent.local_slm.training import training_dry_run
 
 DATASET = Path("benchmarks/local_slm_stage2_v1/scenarios.jsonl")
@@ -160,6 +161,10 @@ def test_manifest_fingerprint_is_deterministic() -> None:
     rows = [item.to_dict() for item in benchmark.scenarios]
     assert benchmark_fingerprint(rows) == benchmark.fingerprint
     assert benchmark_fingerprint(rows) == benchmark_fingerprint(rows)
+    assert (
+        benchmark.fingerprint
+        == "55ed2c40dc8fc5723732a25863ea988f2ecfa7d00471720508eb56c5fc2405f4"
+    )
 
 
 def test_benchmark_manifest_forbids_training() -> None:
@@ -456,9 +461,36 @@ def test_report_handles_incomplete_human_review(tmp_path: Path) -> None:
         output_dir=run_dir / "report",
     )
     assert result["review_complete"] is False
+    assert result["stage3_decision"].startswith("MANUAL_DECISION_REQUIRED")
     report = (run_dir / "report" / "report.md").read_text(encoding="utf-8")
-    assert "Human evaluation incomplete" in report
-    assert "No winner is declared" in report
+    assert "Human review is optional" in report
+    assert "No human winner is declared" in report
+
+
+def test_human_review_count_does_not_block_architecture_gate(tmp_path: Path) -> None:
+    asyncio.run(
+        run_stage2_benchmark(
+            _options(tmp_path),
+            provider_overrides=_providers(),
+            machine_override={"test": True},
+        )
+    )
+    run_dir = tmp_path / "run"
+    generate_diagnostic_pack(
+        run_dir=run_dir,
+        output_dir=run_dir / "diagnostic-pack",
+        max_examples=40,
+        seed=42,
+    )
+    result = generate_stage2_report(
+        run_dir=run_dir,
+        reviews_dir=run_dir / "reviews",
+        output_dir=run_dir / "report",
+    )
+    assert result["reviewed_pairs"] == 0
+    assert result["stage3_decision"].startswith(
+        "READY_FOR_ARCHITECTURE_EXPERIMENT"
+    )
 
 
 def test_assistant_phrase_flags_are_calculated(tmp_path: Path) -> None:
