@@ -16,6 +16,14 @@ from conversation_agent.local_slm.context import LocalContextBuilder
 from conversation_agent.local_slm.dataset import build_sft_dataset
 from conversation_agent.local_slm.models import DialoguePolicyInput, GenerationRequest, HybridResult
 from conversation_agent.local_slm.policy import RuleBasedDialoguePolicy, safe_policy_decision
+from conversation_agent.local_slm.private_style_dataset import (
+    add_style_examples,
+    build_style_dataset,
+    init_style_dataset,
+    inspect_style_dataset,
+    style_dataset_stats,
+    validate_style_dataset,
+)
 from conversation_agent.local_slm.provider import (
     FakeLocalGenerationProvider,
     LocalModelError,
@@ -30,6 +38,11 @@ from conversation_agent.local_slm.stage2_review_ui import run_review_ui
 from conversation_agent.local_slm.stage2_runner import (
     Stage2RunOptions,
     run_stage2_benchmark,
+)
+from conversation_agent.local_slm.stage3a import (
+    Stage3AOptions,
+    generate_stage3a_report,
+    run_stage3a,
 )
 from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
 from conversation_agent.local_slm.stage25_report import generate_stage25_report
@@ -76,6 +89,48 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     train.add_argument("--output-dir", default=".runtime/models/adapters/dry-run")
     train.add_argument("--batch-size", type=int, default=4)
     train.set_defaults(func=_train_dry_run)
+
+    style_dataset = subparsers.add_parser(
+        "dataset",
+        help="Manage the local private human-style dataset prototype",
+    )
+    style_dataset_sub = style_dataset.add_subparsers(
+        dest="dataset_command",
+        required=True,
+    )
+    style_init = style_dataset_sub.add_parser("style-init")
+    style_init.add_argument("--dataset", default="datasets/private-style")
+    style_init.set_defaults(func=_dataset_style_init)
+    style_add = style_dataset_sub.add_parser("style-add")
+    style_add.add_argument("--dataset", default="datasets/private-style")
+    style_add.add_argument("--input", required=True)
+    style_add.add_argument(
+        "--source-type",
+        required=True,
+        choices=(
+            "human_manual",
+            "human_edit",
+            "human_fix",
+            "model_rejected",
+            "model_accepted_unedited",
+            "imported_human_verified",
+        ),
+    )
+    style_add.set_defaults(func=_dataset_style_add)
+    style_validate = style_dataset_sub.add_parser("style-validate")
+    style_validate.add_argument("--dataset", required=True)
+    style_validate.set_defaults(func=_dataset_style_validate)
+    style_build = style_dataset_sub.add_parser("style-build")
+    style_build.add_argument("--dataset", required=True)
+    style_build.add_argument("--output", required=True)
+    style_build.set_defaults(func=_dataset_style_build)
+    style_stats = style_dataset_sub.add_parser("style-stats")
+    style_stats.add_argument("--dataset", required=True)
+    style_stats.set_defaults(func=_dataset_style_stats)
+    style_inspect = style_dataset_sub.add_parser("style-inspect")
+    style_inspect.add_argument("--dataset", required=True)
+    style_inspect.add_argument("--limit", type=int, default=30)
+    style_inspect.set_defaults(func=_dataset_style_inspect)
 
     benchmark = subparsers.add_parser("benchmark", help="Run fake/local benchmark")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
@@ -228,6 +283,30 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     stage26_report.add_argument("--baseline", required=True)
     stage26_report.add_argument("--output", required=True)
     stage26_report.set_defaults(func=_benchmark_stage26_report)
+
+    stage3a = benchmark_sub.add_parser(
+        "stage3a-run",
+        help="Run saved semantics through adaptive style and Ruadapt",
+    )
+    stage3a.add_argument("--dataset", required=True)
+    stage3a.add_argument("--contracts-from", required=True)
+    stage3a.add_argument("--renderer", required=True)
+    stage3a.add_argument("--output", required=True)
+    stage3a.add_argument("--seed", type=int, default=42)
+    stage3a.add_argument("--scenario-limit", type=int)
+    stage3a.add_argument("--category")
+    stage3a.add_argument("--resume", action="store_true")
+    stage3a.add_argument("--retry-errors", action="store_true")
+    stage3a.add_argument("--gpu-required", action="store_true", default=True)
+    stage3a.set_defaults(func=_benchmark_stage3a_run)
+
+    stage3a_report = benchmark_sub.add_parser(
+        "stage3a-report",
+        help="Generate Stage 3A adaptive-style report and diagnostics",
+    )
+    stage3a_report.add_argument("--run", required=True)
+    stage3a_report.add_argument("--output", required=True)
+    stage3a_report.set_defaults(func=_benchmark_stage3a_report)
 
 
 def run_local_slm_command(args: argparse.Namespace) -> int:
@@ -483,6 +562,37 @@ def _build_dataset(args: argparse.Namespace) -> dict[str, Any]:
     return build_sft_dataset(source_path=Path(args.source), output_path=Path(args.output)).to_dict()
 
 
+def _dataset_style_init(args: argparse.Namespace) -> dict[str, Any]:
+    return init_style_dataset(Path(args.dataset))
+
+
+def _dataset_style_add(args: argparse.Namespace) -> dict[str, Any]:
+    return add_style_examples(
+        root=Path(args.dataset),
+        input_path=Path(args.input),
+        source_type=args.source_type,
+    )
+
+
+def _dataset_style_validate(args: argparse.Namespace) -> dict[str, Any]:
+    return validate_style_dataset(Path(args.dataset)).to_dict()
+
+
+def _dataset_style_build(args: argparse.Namespace) -> dict[str, Any]:
+    return build_style_dataset(
+        root=Path(args.dataset),
+        output=Path(args.output),
+    )
+
+
+def _dataset_style_stats(args: argparse.Namespace) -> dict[str, Any]:
+    return style_dataset_stats(Path(args.dataset))
+
+
+def _dataset_style_inspect(args: argparse.Namespace) -> dict[str, Any]:
+    return inspect_style_dataset(Path(args.dataset), limit=args.limit)
+
+
 def _train_dry_run(args: argparse.Namespace) -> dict[str, Any]:
     return training_dry_run(
         dataset_path=Path(args.dataset),
@@ -656,5 +766,31 @@ def _benchmark_stage26_report(args: argparse.Namespace) -> dict[str, Any]:
     return generate_stage26_report(
         run_dir=Path(args.run),
         baseline_dir=Path(args.baseline),
+        output_dir=Path(args.output),
+    )
+
+
+def _benchmark_stage3a_run(args: argparse.Namespace) -> dict[str, Any]:
+    return asyncio.run(
+        run_stage3a(
+            Stage3AOptions(
+                dataset_path=Path(args.dataset),
+                contracts_from=Path(args.contracts_from),
+                renderer=args.renderer,
+                output_dir=Path(args.output),
+                seed=args.seed,
+                scenario_limit=args.scenario_limit,
+                category=args.category,
+                resume=args.resume or args.retry_errors,
+                retry_errors=args.retry_errors,
+                gpu_required=bool(args.gpu_required),
+            )
+        )
+    )
+
+
+def _benchmark_stage3a_report(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_stage3a_report(
+        run_dir=Path(args.run),
         output_dir=Path(args.output),
     )
