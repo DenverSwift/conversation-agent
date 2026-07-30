@@ -39,7 +39,7 @@ $arguments = @(
     "--port", "$Port",
     "--ctx-size", "4096",
     "--parallel", "1",
-    "--n-gpu-layers", "all",
+    "--n-gpu-layers", "99",
     "--flash-attn", "on",
     "--jinja",
     "--verbosity", "4"

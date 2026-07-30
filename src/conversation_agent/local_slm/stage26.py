@@ -187,6 +187,7 @@ async def run_stage26(
                         "valid": result.renderer_validation.valid,
                         "errors": list(result.renderer_validation.errors),
                     },
+                    "schema_valid": True,
                     "normalized_output": output,
                     "automatic_evaluation": evaluation,
                     "renderer_model": result.renderer_model,
@@ -271,8 +272,17 @@ def aggregate_stage26_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         for finding in validation.get("copy_analysis", [])
     ]
     total = len(results)
+    schema_valid = sum(
+        bool(item.get("schema_valid"))
+        or (
+            not item.get("provider_error")
+            and isinstance(item.get("normalized_output"), dict)
+        )
+        for item in results
+    )
     metrics.update(
         {
+            "schema_validity_rate": _rate(schema_valid, total),
             "exact_incoming_copy_rate": _rate(
                 sum(
                     any(

@@ -427,3 +427,89 @@ machine, commands, timings, and remaining limitations.
 
 See [Stage 2 results](local-telegram-slm-stage2-results.md) for the frozen
 dataset fingerprint, real baseline runs, and pending human-review status.
+
+## Stage 2.6 - RuadaptQwen3-4B Renderer Qualification
+
+Stage 2.6 keeps the GPT policy and frozen `ResponseContract` artifacts from
+Stage 2.5, but replaces only the wording renderer. This isolates the question
+that the 0.6B experiment left open: can a stronger Russian model turn an
+already-correct contract into a concise, coherent Telegram response?
+
+The inference model is
+`RefalMachine/RuadaptQwen3-4B-Instruct-GGUF` at pinned revision
+`da30124570330edcb7fe487c5b1f1ba0b0c09721`. The future training base is
+`RefalMachine/RuadaptQwen3-4B-Instruct` at pinned revision
+`03bcd55e56b02175bcc863c4761613b1bda8302b`. Q6_K is primary; Q5_K_M is an
+explicit fallback only when Q6_K cannot remain fully offloaded with safe VRAM.
+No floating Hugging Face revision or silent quantization fallback is allowed.
+
+Download, start, verify, and inspect the model:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\download_ruadapt_qwen3_4b.ps1 -Quantization Q6_K
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\start_ruadapt_qwen3_4b_cuda.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\check_ruadapt_qwen3_4b.ps1
+uv run python -m conversation_agent local-model-doctor `
+  --profile ruadapt-qwen3-4b
+```
+
+The CUDA launcher uses context 4096, one parallel slot, Flash Attention, KV
+cache offload, and all supported GPU layers. The check refuses readiness
+unless the manifest, served model, CUDA logs, full layer offload, VRAM delta,
+`nvidia-smi` process, Russian completion, and non-thinking output all agree.
+The exact file size and SHA-256 are recorded under `.runtime/local_slm/`.
+
+Run the deterministic quick qualification with the saved Stage 2.5 contracts:
+
+```powershell
+uv run python -m conversation_agent benchmark stage26-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --renderer ruadapt_qwen3_4b_q6 `
+  --contracts-from .runtime/benchmarks/stage25-v1 `
+  --baseline .runtime/benchmarks/stage25-v1 `
+  --output .runtime/benchmarks/stage26-quick30 `
+  --scenario-limit 30 `
+  --gpu-required `
+  --seed 42
+```
+
+The renderer receives only conversation context, relationship, known facts,
+restrictions, goal, and the saved contract. It never receives expected
+actions, evaluation notes, baseline outputs, or benchmark answers. The GPT
+policy is not instantiated or called. Each contract is copied into a frozen
+Stage 2.6 snapshot with its own fingerprint and source metadata.
+
+The hard validator now records exact normalized copies, punctuation-only
+copies, near copies, and substantial partial copies from any incoming message.
+It stores the rule ID, similarity, token overlap, and matched fragment while
+allowing concise reuse of known required facts. A failing local rendering gets
+one retry from the same model; GPT does not repair it.
+
+If quick-30 reaches at least 95% completion and schema validity, remains
+stable on CUDA, and materially improves input repetition, run all 100 frozen
+scenarios:
+
+```powershell
+uv run python -m conversation_agent benchmark stage26-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --renderer ruadapt_qwen3_4b_q6 `
+  --contracts-from .runtime/benchmarks/stage25-v1 `
+  --baseline .runtime/benchmarks/stage25-v1 `
+  --output .runtime/benchmarks/stage26-v1 `
+  --gpu-required `
+  --seed 42
+
+uv run python -m conversation_agent benchmark stage26-report `
+  --run .runtime/benchmarks/stage26-v1 `
+  --baseline .runtime/benchmarks/stage25-v1 `
+  --output .runtime/benchmarks/stage26-v1/report
+```
+
+The report imports both Stage 2.5 renderer baselines without rerunning them
+and creates a compact diagnostic pack instead of a rating form. The
+`READY_FOR_DATASET_PROTOTYPE` threshold means only that a small private
+training-data prototype is technically justified. It does not mean production
+readiness, autopilot approval, or guaranteed LoRA success.

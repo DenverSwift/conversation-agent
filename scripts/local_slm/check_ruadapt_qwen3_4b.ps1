@@ -24,16 +24,23 @@ $total = if ($offload -and $offload.Groups[2].Success) {
     [int]$offload.Groups[2].Value
 } else { $offloaded }
 $models = Invoke-RestMethod "http://127.0.0.1:$Port/v1/models" -TimeoutSec 5
+$russianPrompt = [Text.Encoding]::UTF8.GetString(
+    [Convert]::FromBase64String(
+        "0J7RgtCy0LXRgtGMINC/0L4t0YDRg9GB0YHQutC4INC+0LTQvdC40Lwg0YHQu9C+0LLQvtC8OiDRgNCw0LHQvtGC0LDQtdGC"
+    )
+)
 $payload = @{
     model = $startup.model
-    messages = @(@{role="user";content="Ответь по-русски одним словом: работает"})
+    messages = @(@{role="user";content=$russianPrompt})
     max_tokens = 12
     temperature = 0
     stream = $false
 } | ConvertTo-Json -Depth 5
+$payloadBytes = [Text.Encoding]::UTF8.GetBytes($payload)
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $completion = Invoke-RestMethod "http://127.0.0.1:$Port/v1/chat/completions" `
-    -Method Post -ContentType "application/json" -Body $payload -TimeoutSec 90
+    -Method Post -ContentType "application/json; charset=utf-8" `
+    -Body $payloadBytes -TimeoutSec 90
 $timer.Stop()
 $text = [string]$completion.choices[0].message.content
 $used = [int]$gpuLine[1]
@@ -48,7 +55,7 @@ $ready = (
     $delta -gt 0 -and
     $processVisible -and
     $models.data[0].id -eq $startup.model -and
-    $text -match "[А-Яа-яЁё]" -and
+    $text -match "\p{IsCyrillic}" -and
     $text -notmatch "(?i)<\/?think|reasoning_content"
 )
 $status = [ordered]@{
@@ -67,7 +74,7 @@ $status = [ordered]@{
     vram_total_mib = [int]$gpuLine[2]
     vram_delta_mib = $delta
     process_visible_in_nvidia_smi = $processVisible
-    gpu_layers_requested = "all"
+    gpu_layers_requested = 99
     kv_cache_offload = $true
     flash_attention = $true
     cpu_fallback = -not $ready

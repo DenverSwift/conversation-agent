@@ -235,7 +235,7 @@ def test_stage26_reuses_contracts_and_resume_skips_completed(
         scenario_limit=1,
         gpu_required=True,
     )
-    asyncio.run(
+    summary = asyncio.run(
         run_stage26(
             options,
             renderer_override=renderer,
@@ -243,6 +243,7 @@ def test_stage26_reuses_contracts_and_resume_skips_completed(
         )
     )
     assert renderer.calls == 1
+    assert summary["metrics"]["schema_validity_rate"] == 1.0
     assert "expected_actions" not in renderer.contexts[0]
     assert "baseline" not in json.dumps(renderer.contexts[0])
     run = json.loads((output / "run.json").read_text(encoding="utf-8"))
