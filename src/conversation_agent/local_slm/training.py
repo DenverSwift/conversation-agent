@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.local_slm.stage2_dataset import assert_training_source_allowed
+
 
 @dataclass(frozen=True)
 class TrainingDryRunSummary:
@@ -40,6 +42,7 @@ def training_dry_run(
     batch_size: int = 4,
     lora_rank: int = 16,
 ) -> TrainingDryRunSummary:
+    assert_training_source_allowed(dataset_path)
     rows = [
         json.loads(line)
         for line in dataset_path.read_text(encoding="utf-8-sig").splitlines()

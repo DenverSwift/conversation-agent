@@ -1,0 +1,10 @@
+{
+  "allowed_for_training": false,
+  "created_from_private_data": false,
+  "fingerprint": "55ed2c40dc8fc5723732a25863ea988f2ecfa7d00471720508eb56c5fc2405f4",
+  "language": "ru",
+  "name": "local-slm-stage2-v1",
+  "purpose": "benchmark_only",
+  "scenario_count": 100,
+  "version": 1
+}

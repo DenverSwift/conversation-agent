@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.local_slm.stage2_dataset import assert_training_source_allowed
+
 
 @dataclass(frozen=True)
 class DatasetBuildSummary:
@@ -37,6 +39,7 @@ def build_sft_dataset(
     output_path: Path,
     test_ratio: float = 0.2,
 ) -> DatasetBuildSummary:
+    assert_training_source_allowed(source_path)
     rows = _load_rows(source_path)
     seen: set[str] = set()
     examples: list[dict[str, Any]] = []

@@ -1,0 +1,39 @@
+{
+  "assistant_phrase_detector": {
+    "formal_markers": [
+      "уважаемый",
+      "благодарю вас",
+      "будьте добры"
+    ],
+    "note": "Detector flags are evidence for human review, not an automatic quality verdict.",
+    "phrases": [
+      "Благодарю вас за обращение",
+      "Я понимаю ваши чувства",
+      "Конечно! Я с радостью помогу",
+      "Давайте разберёмся",
+      "Если у вас есть дополнительные вопросы",
+      "Надеюсь, эта информация была полезной",
+      "Как искусственный интеллект",
+      "Я являюсь виртуальным помощником"
+    ],
+    "thresholds": {
+      "excessive_total_chars": 450,
+      "question_repetition_min_chars": 20
+    }
+  },
+  "human_rating_scale": {
+    "dimensions": [
+      "naturalness",
+      "relevance",
+      "brevity",
+      "telegram_likeness",
+      "relationship_fit",
+      "emotional_appropriateness",
+      "factual_discipline",
+      "personality_fit"
+    ],
+    "max": 5,
+    "min": 1
+  },
+  "version": 1
+}
