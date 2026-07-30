@@ -535,8 +535,13 @@ def _refresh_status(run_meta: dict[str, Any], output_dir: Path) -> None:
         values = grouped.get(pipeline, [])
         status.update(
             {
-                "completed": sum(not _record_has_error(item) for item in values),
-                "errors": sum(_record_has_error(item) for item in values),
+                "completed": sum(
+                    not _record_has_execution_error(item) for item in values
+                ),
+                "errors": sum(_record_has_execution_error(item) for item in values),
+                "renderer_failures": sum(
+                    bool(item.get("renderer_error")) for item in values
+                ),
                 "status": "completed",
             }
         )
@@ -569,6 +574,10 @@ def _record_has_error(value: dict[str, Any]) -> bool:
         or value.get("contract_error")
         or value.get("renderer_error")
     )
+
+
+def _record_has_execution_error(value: dict[str, Any]) -> bool:
+    return bool(value.get("provider_error") or value.get("contract_error"))
 
 
 def _load_optional_json(path: Path) -> dict[str, Any] | None:

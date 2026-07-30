@@ -180,8 +180,6 @@ def _candidate(
         "automatic_evaluation": evaluation,
         "provider_error": (
             result.get("provider_error")
-            or result.get("contract_error")
-            or result.get("renderer_error")
         ),
         "latency_ms": result.get("total_latency_ms") or result.get("latency_ms"),
     }
