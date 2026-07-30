@@ -177,6 +177,93 @@ no-reply accuracy, output length, and provider failure rate. Blind comparison
 can be layered on top of the saved candidate outputs without revealing provider
 names before the operator decision.
 
+## Stage 2 - Frozen Baseline Benchmark
+
+Stage 2 records the quality of the untrained local model before any LoRA,
+QLoRA, preference training, or private-data collection. The public benchmark
+contains exactly 100 manually authored Russian dialogue scenarios under
+`benchmarks/local_slm_stage2_v1/`.
+
+The dataset is frozen by a deterministic fingerprint. Its manifest declares
+`purpose=benchmark_only` and `allowed_for_training=false`; dataset builders and
+training commands reject both this manifest and its registered fingerprint.
+Changing the scenarios requires a new benchmark version.
+
+Two modes answer different questions:
+
+- `system_comparison` compares the current product pipelines: the local compact
+  context and validator against the current OpenAI prompt/context path.
+- `same_context` gives both models the same normalized semantic context,
+  allowed actions, schema, and output-token limit. Provider chat templates
+  still differ, so prompts are not claimed to be literally identical.
+
+Start and verify the managed local server:
+
+```powershell
+scripts\local_slm\start_qwen3_06b.bat
+python -m conversation_agent local-model-doctor
+```
+
+Run both real comparisons:
+
+```powershell
+python -m conversation_agent benchmark stage2-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --mode system_comparison `
+  --providers local_qwen,openai_gpt4o_mini `
+  --output .runtime/benchmarks/stage2-system-v1 `
+  --seed 42
+
+python -m conversation_agent benchmark stage2-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --mode same_context `
+  --providers local_qwen,openai_gpt4o_mini `
+  --output .runtime/benchmarks/stage2-same-context-v1 `
+  --seed 42
+```
+
+Add `--resume` to either command to skip completed results. Add
+`--retry-errors` with `--resume` to retry only failed provider results. A
+successful OpenAI result is never called again during resume.
+
+Run the blind review without revealing provider, model, latency, token counts,
+or retry metadata:
+
+```powershell
+python -m conversation_agent benchmark stage2-review `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --reviewer denver `
+  --seed 42 `
+  --only-unreviewed
+```
+
+The CLI saves each rating immediately and supports `skip`, `back`, `progress`,
+and category filtering. Reveal the deterministic A/B mapping separately:
+
+```powershell
+python -m conversation_agent benchmark stage2-review `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --reviewer denver `
+  --seed 42 `
+  --reveal
+```
+
+Reveal does not modify saved ratings. Generate a report at any point:
+
+```powershell
+python -m conversation_agent benchmark stage2-report `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --reviews .runtime/benchmarks/stage2-system-v1/reviews `
+  --output .runtime/benchmarks/stage2-system-v1/report
+```
+
+Automatic metrics measure format, actions, factual constraints, output shape,
+and latency; they do not establish a quality winner. The Stage 3 decision
+remains pending until at least 30 scenarios have genuine human ratings. The
+reviewer should also account for the limitations of a single reviewer,
+subjective style judgments, and the fact that a failed provider output cannot
+form a complete A/B pair.
+
 ## Fallback
 
 OpenAI remains available as fallback, benchmark, and teacher. The production
@@ -203,3 +290,6 @@ production flow to local generation by default.
 
 See [Stage 1 results](local-telegram-slm-stage1-results.md) for the verified
 machine, commands, timings, and remaining limitations.
+
+See [Stage 2 results](local-telegram-slm-stage2-results.md) for the frozen
+dataset fingerprint, real baseline runs, and pending human-review status.
