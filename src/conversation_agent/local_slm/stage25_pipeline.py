@@ -319,8 +319,21 @@ async def execute_contract_pipeline(
     renderer: ContractRenderer,
     context: PolicyContext,
 ) -> ContractPipelineResult:
-    started = time.perf_counter()
     plan = await policy.plan(context)
+    return await execute_renderer_with_plan(
+        plan=plan,
+        renderer=renderer,
+        context=context,
+    )
+
+
+async def execute_renderer_with_plan(
+    *,
+    plan: PolicyPlan,
+    renderer: ContractRenderer,
+    context: PolicyContext,
+) -> ContractPipelineResult:
+    started = time.perf_counter()
     contract = plan.contract
     if contract.target_bubble_count == 0:
         output = GenerationResult(
@@ -344,7 +357,9 @@ async def execute_contract_pipeline(
             renderer_validation=validation,
             policy_latency_ms=plan.latency_ms,
             renderer_latency_ms=0,
-            total_latency_ms=int((time.perf_counter() - started) * 1000),
+            total_latency_ms=(
+                plan.latency_ms + int((time.perf_counter() - started) * 1000)
+            ),
             policy_model=plan.model,
             renderer_model=output.model,
             renderer_name=renderer.renderer_name,
@@ -389,7 +404,9 @@ async def execute_contract_pipeline(
         renderer_validation=validation,
         policy_latency_ms=plan.latency_ms,
         renderer_latency_ms=renderer_latency_ms,
-        total_latency_ms=int((time.perf_counter() - started) * 1000),
+        total_latency_ms=(
+            plan.latency_ms + int((time.perf_counter() - started) * 1000)
+        ),
         policy_model=plan.model,
         renderer_model=output.model,
         renderer_name=renderer.renderer_name,

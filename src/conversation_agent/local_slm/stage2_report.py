@@ -42,10 +42,10 @@ def generate_stage2_report(
     reviews = _load_reviews(reviews_dir)
     human = _human_summary(reviews, pair_mapping)
     review_complete = bool(blind_pairs) and len(reviews) >= len(blind_pairs)
+    diagnostic_pack = _diagnostic_pack_status(run_dir / "diagnostic-pack")
     stage3_decision = _stage3_decision(
         automatic=automatic,
-        human=human,
-        review_complete=review_complete,
+        diagnostic_pack=diagnostic_pack,
     )
     summary = {
         "benchmark_name": run_meta.get("benchmark_name"),
@@ -61,11 +61,17 @@ def generate_stage2_report(
             **human,
             "available_pairs": len(blind_pairs),
             "complete": review_complete,
+            "required": False,
+            "diagnostic_only": True,
             "status": (
-                "complete" if review_complete else "Human evaluation incomplete."
+                "complete"
+                if review_complete
+                else "Optional human evaluation incomplete."
             ),
         },
+        "diagnostic_pack": diagnostic_pack,
         "stage3_decision": stage3_decision,
+        "user_qualitative_review_required": True,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     atomic_write_json(output_dir / "summary.json", summary)
@@ -151,29 +157,49 @@ def _human_summary(
 def _stage3_decision(
     *,
     automatic: dict[str, dict[str, Any]],
-    human: dict[str, Any],
-    review_complete: bool,
+    diagnostic_pack: dict[str, Any],
 ) -> str:
     local = automatic.get("local_qwen", {})
-    if human.get("reviewed_pairs", 0) < 30:
-        return "PENDING: fewer than 30 scenarios have human ratings"
-    if not review_complete:
-        return "PENDING: Human evaluation incomplete"
     completion_rate = (
         local.get("completed_scenarios", 0) / local.get("total_scenarios", 1)
         if local.get("total_scenarios")
         else 0.0
     )
-    if (
-        local.get("schema_validity_rate", 0.0) >= 0.95
-        and completion_rate >= 0.95
-        and local.get("unsupported_fact_flags", 1) == 0
-    ):
+    if local.get("schema_validity_rate", 0.0) < 0.95 or completion_rate < 0.95:
         return (
-            "READY_FOR_TRAINING_DATA_STAGE pending final human judgment "
-            "that Russian dialogue understanding is adequate"
+            "NOT_READY: local completion or schema validity is below the "
+            "technical architecture-experiment threshold"
         )
-    return "NOT_READY based on current completion, schema, or factual-discipline metrics"
+    if not diagnostic_pack.get("ready"):
+        return (
+            "MANUAL_DECISION_REQUIRED: automatic benchmark is complete but "
+            "the diagnostic pack has not been formed"
+        )
+    return (
+        "READY_FOR_ARCHITECTURE_EXPERIMENT: technical decomposition may proceed; "
+        "this does not mean production-ready, autopilot-ready, or selected for training"
+    )
+
+
+def _diagnostic_pack_status(path: Path) -> dict[str, Any]:
+    summary_path = path / "selection-summary.json"
+    examples_path = path / "examples.md"
+    if not summary_path.is_file() or not examples_path.is_file():
+        return {
+            "ready": False,
+            "path": str(path),
+            "reason": "selection-summary.json or examples.md is missing",
+        }
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    selected = int(summary.get("selected_scenarios", 0))
+    groups = summary.get("groups_selected", {})
+    ready = selected > 0 and isinstance(groups, dict) and bool(groups)
+    return {
+        "ready": ready,
+        "path": str(path),
+        "selected_scenarios": selected,
+        "error_groups": sorted(groups) if isinstance(groups, dict) else [],
+    }
 
 
 def _write_scenario_results(path: Path, results: list[dict[str, Any]]) -> None:
@@ -369,10 +395,17 @@ def _report_markdown(summary: dict[str, Any]) -> str:
     winner_note = (
         json.dumps(wins, ensure_ascii=False, sort_keys=True)
         if human.get("complete")
-        else "No winner is declared before human review is complete."
+        else "No human winner is declared; blind review is optional diagnostic data."
     )
+    diagnostic = summary.get("diagnostic_pack", {})
     sections = [
-        ("Executive Summary", f"{review_status} {winner_note}"),
+        (
+            "Executive Summary",
+            (
+                f"{review_status} {winner_note} Technical gate: "
+                f"`{summary.get('stage3_decision')}`."
+            ),
+        ),
         (
             "What Was Compared",
             "Real local Qwen3-0.6B Q8_0 and GPT-4o-mini structured pipelines.",
@@ -389,7 +422,11 @@ def _report_markdown(summary: dict[str, Any]) -> str:
             + json.dumps(automatic, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
         ),
-        ("Human Review Status", review_status),
+        (
+            "Human Review Status",
+            review_status
+            + " Human review is optional and does not block architecture experiments.",
+        ),
         ("Local / GPT / Tie Wins", winner_note),
         ("Naturalness", _human_dimension(human, "naturalness")),
         ("Telegram-likeness", _human_dimension(human, "telegram_likeness")),
@@ -401,16 +438,20 @@ def _report_markdown(summary: dict[str, Any]) -> str:
             "Category Breakdown",
             "See `category_results.csv` for provider metrics by overlapping category.",
         ),
-        ("Qwen Strengths", "Pending completed blind review."),
-        ("Qwen Weaknesses", "Pending completed blind review."),
-        ("GPT Strengths", "Pending completed blind review."),
-        ("GPT Weaknesses", "Pending completed blind review."),
-        ("Typical Errors", "See `failure_examples.md`."),
+        ("Qwen Strengths", "See the representative automatic diagnostic pack."),
+        ("Qwen Weaknesses", "See the representative automatic diagnostic pack."),
+        ("GPT Strengths", "See the representative automatic diagnostic pack."),
+        ("GPT Weaknesses", "See the representative automatic diagnostic pack."),
+        (
+            "Typical Errors",
+            f"See `failure_examples.md` and `{diagnostic.get('path')}`.",
+        ),
         (
             "Research Limitations",
             (
                 "Remote GPT output is not fully deterministic. Automatic detectors create "
-                "flags, not quality judgments. Human ratings can vary by reviewer."
+                "flags, not quality judgments. A short qualitative review of the diagnostic "
+                "pack remains required before a final model decision."
             ),
         ),
         ("Stage 3 Decision", str(summary.get("stage3_decision"))),

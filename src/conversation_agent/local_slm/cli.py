@@ -31,6 +31,15 @@ from conversation_agent.local_slm.stage2_runner import (
     Stage2RunOptions,
     run_stage2_benchmark,
 )
+from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
+from conversation_agent.local_slm.stage25_report import generate_stage25_report
+from conversation_agent.local_slm.stage25_runner import (
+    PIPELINES as STAGE25_PIPELINES,
+)
+from conversation_agent.local_slm.stage25_runner import (
+    Stage25RunOptions,
+    run_stage25_benchmark,
+)
 from conversation_agent.local_slm.training import training_dry_run
 from conversation_agent.local_slm.validator import OutputValidator
 
@@ -138,6 +147,55 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     report.add_argument("--reviews", required=True)
     report.add_argument("--output", required=True)
     report.set_defaults(func=_benchmark_stage2_report)
+
+    diagnostic = benchmark_sub.add_parser(
+        "diagnostic-pack",
+        help="Build a compact technical diagnostic sample",
+    )
+    diagnostic.add_argument("--run", required=True)
+    diagnostic.add_argument("--output", required=True)
+    diagnostic.add_argument("--max-examples", type=int, default=40)
+    diagnostic.add_argument("--seed", type=int, default=42)
+    diagnostic.set_defaults(func=_benchmark_diagnostic_pack)
+
+    stage25 = benchmark_sub.add_parser(
+        "stage25-run",
+        help="Run the Stage 2.5 policy/renderer experiment",
+    )
+    stage25.add_argument("--dataset", required=True)
+    stage25.add_argument("--pipelines", default=",".join(STAGE25_PIPELINES))
+    stage25.add_argument("--output", required=True)
+    stage25.add_argument("--baseline", default=".runtime/benchmarks/stage2-system-v1")
+    stage25.add_argument("--seed", type=int, default=42)
+    stage25.add_argument("--scenario-limit", type=int)
+    stage25.add_argument("--category")
+    stage25.add_argument("--resume", action="store_true")
+    stage25.add_argument("--retry-errors", action="store_true")
+    stage25.add_argument("--no-openai", action="store_true")
+    stage25.add_argument("--no-local", action="store_true")
+    gpu_mode = stage25.add_mutually_exclusive_group()
+    gpu_mode.add_argument(
+        "--gpu-required",
+        dest="gpu_required",
+        action="store_true",
+        default=True,
+    )
+    gpu_mode.add_argument(
+        "--allow-cpu",
+        dest="gpu_required",
+        action="store_false",
+        help="Explicitly allow the local renderer to run without confirmed CUDA offload",
+    )
+    stage25.set_defaults(func=_benchmark_stage25_run)
+
+    stage25_report = benchmark_sub.add_parser(
+        "stage25-report",
+        help="Generate the Stage 2.5 comparison report",
+    )
+    stage25_report.add_argument("--run", required=True)
+    stage25_report.add_argument("--baseline", required=True)
+    stage25_report.add_argument("--output", required=True)
+    stage25_report.set_defaults(func=_benchmark_stage25_report)
 
 
 def run_local_slm_command(args: argparse.Namespace) -> int:
@@ -423,5 +481,64 @@ def _benchmark_stage2_report(args: argparse.Namespace) -> dict[str, Any]:
     return generate_stage2_report(
         run_dir=Path(args.run),
         reviews_dir=Path(args.reviews),
+        output_dir=Path(args.output),
+    )
+
+
+def _benchmark_diagnostic_pack(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_diagnostic_pack(
+        run_dir=Path(args.run),
+        output_dir=Path(args.output),
+        max_examples=args.max_examples,
+        seed=args.seed,
+    )
+
+
+def _benchmark_stage25_run(args: argparse.Namespace) -> dict[str, Any]:
+    pipelines = [
+        item.strip()
+        for item in str(args.pipelines).split(",")
+        if item.strip()
+    ]
+    if args.no_openai:
+        pipelines = [
+            item
+            for item in pipelines
+            if item not in {
+                "openai_direct",
+                "gpt_policy_openai_renderer",
+                "gpt_policy_local_renderer",
+            }
+        ]
+    if args.no_local:
+        pipelines = [
+            item
+            for item in pipelines
+            if item not in {"local_direct", "gpt_policy_local_renderer"}
+        ]
+    if not pipelines:
+        raise ValueError("at least one Stage 2.5 pipeline must be enabled")
+    return asyncio.run(
+        run_stage25_benchmark(
+            Stage25RunOptions(
+                dataset_path=Path(args.dataset),
+                output_dir=Path(args.output),
+                pipelines=tuple(pipelines),
+                baseline_dir=Path(args.baseline),
+                seed=args.seed,
+                scenario_limit=args.scenario_limit,
+                category=args.category,
+                resume=args.resume or args.retry_errors,
+                retry_errors=args.retry_errors,
+                gpu_required=bool(args.gpu_required),
+            )
+        )
+    )
+
+
+def _benchmark_stage25_report(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_stage25_report(
+        run_dir=Path(args.run),
+        baseline_dir=Path(args.baseline),
         output_dir=Path(args.output),
     )
