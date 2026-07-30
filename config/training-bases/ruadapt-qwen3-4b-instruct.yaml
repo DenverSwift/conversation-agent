@@ -9,8 +9,8 @@ tokenizer_repository: RefalMachine/RuadaptQwen3-4B-Instruct
 inference_gguf_repository: RefalMachine/RuadaptQwen3-4B-Instruct-GGUF
 resolved_gguf_revision: da30124570330edcb7fe487c5b1f1ba0b0c09721
 tested_quantization: Q6_K
-benchmark_run_fingerprint: pending_stage26_real_run
+benchmark_run_fingerprint: 0b11525ff1f6f6f7ffdfaf96f625367e627d351b2578a14ef3bc8bd7a0b87815
 training_allowed: true
 benchmark_data_allowed: false
 private_data_required: true
-current_status: renderer_qualification_pending
+current_status: READY_FOR_DATASET_PROTOTYPE
