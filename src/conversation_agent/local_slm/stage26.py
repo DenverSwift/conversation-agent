@@ -304,6 +304,16 @@ def aggregate_stage26_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
                 ),
                 total,
             ),
+            "bubble_count_compliance": _compliance_rate(
+                validations,
+                "bubble_count",
+                total,
+            ),
+            "target_bubble_count_compliance": _compliance_rate(
+                validations,
+                "target_bubble_count",
+                total,
+            ),
             "copy_rule_counts": dict(
                 Counter(str(item.get("rule_id")) for item in analyses)
             ),
@@ -689,6 +699,20 @@ def _violation_rate(
     return _rate(
         sum(
             (validation.get("contract_compliance") or {}).get(key) is False
+            for validation in validations
+        ),
+        total,
+    )
+
+
+def _compliance_rate(
+    validations: list[dict[str, Any]],
+    key: str,
+    total: int,
+) -> float:
+    return _rate(
+        sum(
+            (validation.get("contract_compliance") or {}).get(key) is True
             for validation in validations
         ),
         total,

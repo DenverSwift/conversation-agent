@@ -244,6 +244,7 @@ def test_stage26_reuses_contracts_and_resume_skips_completed(
     )
     assert renderer.calls == 1
     assert summary["metrics"]["schema_validity_rate"] == 1.0
+    assert summary["metrics"]["bubble_count_compliance"] == 1.0
     assert "expected_actions" not in renderer.contexts[0]
     assert "baseline" not in json.dumps(renderer.contexts[0])
     run = json.loads((output / "run.json").read_text(encoding="utf-8"))
