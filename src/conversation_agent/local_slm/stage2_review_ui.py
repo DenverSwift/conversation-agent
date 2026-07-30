@@ -185,7 +185,7 @@ class ReviewUIRequestHandler(BaseHTTPRequestHandler):
 
 
 class ReviewUIServer(ThreadingHTTPServer):
-    allow_reuse_address = True
+    allow_reuse_address = False
     daemon_threads = True
 
 
