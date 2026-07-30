@@ -319,6 +319,13 @@ def test_hard_failure_is_separate_from_soft_deviation() -> None:
     refusal = _output("Не могу сообщить имя дизайнера.")
     assert HardSemanticValidator().validate(forbidden, refusal).valid
     assert SafetyValidator().validate(forbidden, refusal).valid
+    promise_refusal = _output("Не обещаю, что всё будет готово за неделю.")
+    assert HardSemanticValidator().validate(contract, promise_refusal).checks[
+        "allowed_commitments"
+    ]
+    assert SafetyValidator().validate(contract, promise_refusal).checks[
+        "unapproved_promises"
+    ]
 
 
 def _example(

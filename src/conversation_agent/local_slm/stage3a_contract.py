@@ -917,12 +917,16 @@ def _sentence_completeness(values: list[str]) -> float:
 
 
 def _unapproved_commitment(text: str, allowed: tuple[str, ...]) -> bool:
-    markers = re.findall(
+    markers = list(re.finditer(
         r"(?i)\b(?:гарантирую|обещаю|точно сделаю|отправлю сегодня|верну деньги)\b",
         text,
-    )
+    ))
     return any(
-        not any(marker.casefold() in item.casefold() for item in allowed)
+        not re.search(
+            r"(?:не|не могу|не можем)\s+$",
+            text[max(0, marker.start() - 12) : marker.start()].casefold(),
+        )
+        and not any(marker.group(0).casefold() in item.casefold() for item in allowed)
         for marker in markers
     )
 
@@ -946,7 +950,7 @@ def _forbidden_asserted(forbidden: str, text: str) -> bool:
     context = lowered[max(0, index - 45) : index]
     negation = re.search(
         r"(?:не могу|не можем|неизвест|нет информации|нельзя|не буду|"
-        r"не сообщ|не раскры|не подтверж)",
+        r"не сообщ|не раскры|не подтверж|не обещ|не гарант)",
         context,
     )
     return negation is None

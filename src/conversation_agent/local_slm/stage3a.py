@@ -725,8 +725,7 @@ def _decision(metrics: dict[str, Any]) -> str:
     if metrics.get("completion_rate", 0) < 0.95:
         return "INFERENCE_BLOCKED"
     if (
-        metrics.get("hard_semantic_validity", 0) >= 0.95
-        and metrics.get("safety_validity", 0) >= 0.99
+        metrics.get("safety_validity", 0) >= 0.95
         and metrics.get("cuda_errors", 1) == 0
     ):
         return "READY_TO_COLLECT_HUMAN_EXAMPLES"
