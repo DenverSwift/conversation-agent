@@ -23,6 +23,13 @@ from conversation_agent.local_slm.provider import (
 )
 from conversation_agent.local_slm.router import HybridGenerationRouter
 from conversation_agent.local_slm.runtime_config import LocalLLMConfig
+from conversation_agent.local_slm.stage2_dataset import import_private_benchmark
+from conversation_agent.local_slm.stage2_report import generate_stage2_report
+from conversation_agent.local_slm.stage2_review import run_interactive_review
+from conversation_agent.local_slm.stage2_runner import (
+    Stage2RunOptions,
+    run_stage2_benchmark,
+)
 from conversation_agent.local_slm.training import training_dry_run
 from conversation_agent.local_slm.validator import OutputValidator
 
@@ -61,6 +68,63 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     run.add_argument("--providers", default="fake")
     run.add_argument("--output", required=True)
     run.set_defaults(func=_benchmark_run)
+
+    stage2 = benchmark_sub.add_parser(
+        "stage2-run",
+        help="Run the real Stage 2 frozen baseline benchmark",
+    )
+    stage2.add_argument("--dataset", required=True)
+    stage2.add_argument(
+        "--mode",
+        required=True,
+        choices=("system_comparison", "same_context"),
+    )
+    stage2.add_argument(
+        "--providers",
+        default="local_qwen,openai_gpt4o_mini",
+    )
+    stage2.add_argument("--output", required=True)
+    stage2.add_argument("--seed", type=int, default=42)
+    stage2.add_argument("--scenario-limit", type=int)
+    stage2.add_argument("--category")
+    stage2.add_argument("--resume", action="store_true")
+    stage2.add_argument("--retry-errors", action="store_true")
+    stage2.add_argument("--no-openai", action="store_true")
+    stage2.add_argument("--no-local", action="store_true")
+    stage2.add_argument("--repetitions", type=int, default=1)
+    stage2.set_defaults(func=_benchmark_stage2_run)
+
+    private_import = benchmark_sub.add_parser(
+        "import-private",
+        help="Import an anonymized private benchmark under .runtime",
+    )
+    private_import.add_argument("--input", required=True)
+    private_import.add_argument("--output", required=True)
+    private_import.add_argument("--anonymize", action="store_true")
+    private_import.add_argument("--purpose", required=True)
+    private_import.add_argument("--confirm-save-source", action="store_true")
+    private_import.set_defaults(func=_benchmark_import_private)
+
+    review = benchmark_sub.add_parser(
+        "stage2-review",
+        help="Run blind human A/B review",
+    )
+    review.add_argument("--run", required=True)
+    review.add_argument("--reviewer", required=True)
+    review.add_argument("--seed", type=int, default=42)
+    review.add_argument("--category")
+    review.add_argument("--only-unreviewed", action="store_true")
+    review.add_argument("--reveal", action="store_true")
+    review.set_defaults(func=_benchmark_stage2_review)
+
+    report = benchmark_sub.add_parser(
+        "stage2-report",
+        help="Generate Stage 2 reports",
+    )
+    report.add_argument("--run", required=True)
+    report.add_argument("--reviews", required=True)
+    report.add_argument("--output", required=True)
+    report.set_defaults(func=_benchmark_stage2_report)
 
 
 def run_local_slm_command(args: argparse.Namespace) -> int:
@@ -278,3 +342,62 @@ def _benchmark_run(args: argparse.Namespace) -> dict[str, Any]:
             providers=providers,
         )
     ).to_dict()
+
+
+def _benchmark_stage2_run(args: argparse.Namespace) -> dict[str, Any]:
+    providers = [
+        item.strip()
+        for item in str(args.providers).split(",")
+        if item.strip()
+    ]
+    if args.no_openai:
+        providers = [item for item in providers if item != "openai_gpt4o_mini"]
+    if args.no_local:
+        providers = [item for item in providers if item != "local_qwen"]
+    if not providers:
+        raise ValueError("at least one real provider must be enabled")
+    return asyncio.run(
+        run_stage2_benchmark(
+            Stage2RunOptions(
+                dataset_path=Path(args.dataset),
+                output_dir=Path(args.output),
+                mode=args.mode,
+                providers=tuple(providers),
+                seed=args.seed,
+                scenario_limit=args.scenario_limit,
+                category=args.category,
+                resume=args.resume or args.retry_errors,
+                retry_errors=args.retry_errors,
+                repetitions=args.repetitions,
+            )
+        )
+    )
+
+
+def _benchmark_import_private(args: argparse.Namespace) -> dict[str, Any]:
+    return import_private_benchmark(
+        input_path=Path(args.input),
+        output_dir=Path(args.output),
+        anonymize=bool(args.anonymize),
+        purpose=args.purpose,
+        confirm_save_source=bool(args.confirm_save_source),
+    )
+
+
+def _benchmark_stage2_review(args: argparse.Namespace) -> dict[str, Any]:
+    return run_interactive_review(
+        run_dir=Path(args.run),
+        reviewer=args.reviewer,
+        seed=args.seed,
+        category=args.category,
+        only_unreviewed=bool(args.only_unreviewed),
+        reveal=bool(args.reveal),
+    )
+
+
+def _benchmark_stage2_report(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_stage2_report(
+        run_dir=Path(args.run),
+        reviews_dir=Path(args.reviews),
+        output_dir=Path(args.output),
+    )

@@ -138,6 +138,10 @@ class OpenAICompatibleLocalProvider:
         errors: list[str] = []
         use_json_schema = True
         attempt = 0
+        requested_action: Action = (
+            "no_reply" if request.policy.action == "wait" else request.policy.action
+        )
+        allowed_actions = request.allowed_actions or (requested_action,)
         while attempt < 2:
             payload = self._build_payload(
                 request,
@@ -145,6 +149,7 @@ class OpenAICompatibleLocalProvider:
                 previous_output=text,
                 previous_errors=errors,
                 use_json_schema=use_json_schema,
+                allowed_actions=allowed_actions,
             )
             try:
                 raw = await asyncio.to_thread(self._post_json, "/chat/completions", payload)
@@ -156,7 +161,11 @@ class OpenAICompatibleLocalProvider:
             text = _extract_text(raw)
             try:
                 _raise_for_thinking(json.dumps(raw, ensure_ascii=False), ())
-                result = _parse_generation_text(text, provider=self.provider_name)
+                result = parse_generation_text(
+                    text,
+                    provider=self.provider_name,
+                    allowed_actions=allowed_actions,
+                )
                 _raise_for_thinking(result.raw_output, result.messages)
                 break
             except LocalModelError as exc:
@@ -197,10 +206,15 @@ class OpenAICompatibleLocalProvider:
         previous_output: str,
         previous_errors: list[str],
         use_json_schema: bool,
+        allowed_actions: tuple[Action, ...],
     ) -> dict[str, Any]:
-        requested_action = "no_reply" if request.policy.action == "wait" else request.policy.action
-        system = _system_prompt(thinking=self.thinking, requested_action=requested_action)
-        user_content = request.context.render(budget_chars=self.context_tokens * 4)
+        system = request.system_prompt or generation_system_prompt(
+            thinking=self.thinking,
+            allowed_actions=allowed_actions,
+        )
+        user_content = request.semantic_context or request.context.render(
+            budget_chars=self.context_tokens * 4
+        )
         if repair:
             user_content = (
                 f"{user_content}\n\nPrevious invalid output:\n{previous_output}\n\n"
@@ -220,7 +234,7 @@ class OpenAICompatibleLocalProvider:
             "presence_penalty": self.presence_penalty,
             "max_tokens": self.max_output_tokens,
             "response_format": (
-                _json_schema_response_format(requested_action)
+                generation_response_format(allowed_actions)
                 if use_json_schema
                 else {"type": "json_object"}
             ),
@@ -280,7 +294,12 @@ def _extract_text(raw: Any) -> str:
         raise ValueError("OpenAI-compatible endpoint returned an unsupported response") from exc
 
 
-def _parse_generation_text(text: str, *, provider: str) -> GenerationResult:
+def parse_generation_text(
+    text: str,
+    *,
+    provider: str,
+    allowed_actions: tuple[Action, ...] = ("reply", "no_reply", "reaction", "handoff"),
+) -> GenerationResult:
     try:
         parsed = json.loads(_extract_json_object(text))
     except json.JSONDecodeError as exc:
@@ -288,7 +307,7 @@ def _parse_generation_text(text: str, *, provider: str) -> GenerationResult:
     if not isinstance(parsed, dict):
         raise LocalModelError("invalid_json:not_object")
     action = parsed.get("action")
-    if action not in {"reply", "no_reply", "reaction", "handoff"}:
+    if action not in allowed_actions:
         raise LocalModelError("semantic_validation:invalid_action")
     raw_messages = parsed.get("messages")
     if not isinstance(raw_messages, list) or not all(isinstance(item, str) for item in raw_messages):
@@ -324,26 +343,39 @@ def _parse_generation_text(text: str, *, provider: str) -> GenerationResult:
     )
 
 
-def _system_prompt(*, thinking: bool, requested_action: Action) -> str:
+def generation_system_prompt(
+    *,
+    thinking: bool,
+    allowed_actions: tuple[Action, ...],
+) -> str:
     no_think = "" if thinking else "/no_think\n"
+    action_instruction = (
+        f"The dialogue policy requires action={allowed_actions[0]}; return exactly this action.\n"
+        if len(allowed_actions) == 1
+        else f"Choose one allowed action: {', '.join(allowed_actions)}.\n"
+    )
     return (
         no_think
         + "You generate Telegram replies for a human operator.\n"
         "Return only one strict JSON object. Do not include markdown or explanations.\n"
         "Do not include <think>, reasoning_content, analysis, or internal reasoning.\n"
         "Required fields: action, messages, reaction, handoff_required, confidence.\n"
-        "Allowed actions: reply, no_reply, reaction, handoff.\n"
-        f"The dialogue policy requires action={requested_action}; return exactly this action.\n"
+        + action_instruction
+        +
         "For reply use 1-4 short Russian Telegram messages. For no_reply use empty messages.\n"
         "Use reaction only for action=reaction. Set it to null for every other action.\n"
         "Set handoff_required=true only when action=handoff; otherwise set it to false."
     )
 
 
-def _json_schema_response_format(requested_action: Action) -> dict[str, Any]:
-    is_reply = requested_action == "reply"
-    is_reaction = requested_action == "reaction"
-    is_handoff = requested_action == "handoff"
+def generation_response_format(allowed_actions: tuple[Action, ...]) -> dict[str, Any]:
+    if not allowed_actions:
+        raise ValueError("at least one allowed action is required")
+    requested_action = allowed_actions[0]
+    is_forced = len(allowed_actions) == 1
+    is_reply = is_forced and requested_action == "reply"
+    is_reaction = is_forced and requested_action == "reaction"
+    is_handoff = is_forced and requested_action == "handoff"
     return {
         "type": "json_schema",
         "json_schema": {
@@ -360,19 +392,31 @@ def _json_schema_response_format(requested_action: Action) -> dict[str, Any]:
                     "confidence",
                 ],
                 "properties": {
-                    "action": {"type": "string", "const": requested_action},
+                    "action": (
+                        {"type": "string", "const": requested_action}
+                        if is_forced
+                        else {"type": "string", "enum": list(allowed_actions)}
+                    ),
                     "messages": {
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1 if is_reply else 0,
-                        "maxItems": 4 if is_reply else 0,
+                        "maxItems": 4 if (is_reply or not is_forced) else 0,
                     },
                     "reaction": (
                         {"type": "string", "minLength": 1}
                         if is_reaction
-                        else {"type": "null"}
+                        else (
+                            {"type": "null"}
+                            if is_forced
+                            else {"anyOf": [{"type": "string"}, {"type": "null"}]}
+                        )
                     ),
-                    "handoff_required": {"type": "boolean", "const": is_handoff},
+                    "handoff_required": (
+                        {"type": "boolean", "const": is_handoff}
+                        if is_forced
+                        else {"type": "boolean"}
+                    ),
                     "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
                 },
             },
