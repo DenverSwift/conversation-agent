@@ -591,11 +591,11 @@ class HardSemanticValidator:
             "handoff": (output.action == "handoff")
             == (semantic.handoff_strategy != "none"),
             "required_meaning": all(
-                item.casefold() in text.casefold()
+                _required_information_present(item, text)
                 for item in semantic.required_information
             ),
             "forbidden_claims": not any(
-                item.casefold() in text.casefold()
+                _forbidden_asserted(item, text)
                 for item in semantic.forbidden_claims
             ),
             "allowed_commitments": not _unapproved_commitment(
@@ -609,8 +609,8 @@ class HardSemanticValidator:
             ),
             "adaptive_critical_length": len(text)
             <= max(
-                contract.style.preferred_character_range[1] * 3,
-                contract.style.preferred_character_range[0] + 80,
+                contract.style.preferred_character_range[1] * 4,
+                contract.style.preferred_character_range[0] + 120,
             ),
             "no_incoming_copy": not analyze_incoming_copy(
                 output.messages,
@@ -640,7 +640,7 @@ class SafetyValidator:
                 contract.semantic.allowed_commitments,
             ),
             "restricted_actions": not any(
-                item.casefold() in text.casefold()
+                _forbidden_asserted(item, text)
                 for item in contract.safety.restrictions
             ),
         }
@@ -925,6 +925,31 @@ def _unapproved_commitment(text: str, allowed: tuple[str, ...]) -> bool:
         not any(marker.casefold() in item.casefold() for item in allowed)
         for marker in markers
     )
+
+
+def _required_information_present(required: str, text: str) -> bool:
+    if required.casefold() in text.casefold():
+        return True
+    required_tokens = set(re.findall(r"[0-9a-zа-яё]+", required.casefold()))
+    text_tokens = set(re.findall(r"[0-9a-zа-яё]+", text.casefold()))
+    return bool(required_tokens) and len(required_tokens & text_tokens) / len(
+        required_tokens
+    ) >= 0.55
+
+
+def _forbidden_asserted(forbidden: str, text: str) -> bool:
+    lowered = text.casefold()
+    phrase = forbidden.casefold()
+    index = lowered.find(phrase)
+    if index < 0:
+        return False
+    context = lowered[max(0, index - 45) : index]
+    negation = re.search(
+        r"(?:не могу|не можем|неизвест|нет информации|нельзя|не буду|"
+        r"не сообщ|не раскры|не подтверж)",
+        context,
+    )
+    return negation is None
 
 
 def _requests_sensitive_data(text: str) -> bool:

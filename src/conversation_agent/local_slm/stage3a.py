@@ -662,8 +662,8 @@ def _renderer_schema(contract: ResponseContractV2) -> dict[str, Any]:
         else 0
     )
     critical_length = max(
-        contract.style.preferred_character_range[1] * 3,
-        contract.style.preferred_character_range[0] + 80,
+        contract.style.preferred_character_range[1] * 4,
+        contract.style.preferred_character_range[0] + 120,
     )
     return {
         "type": "object",

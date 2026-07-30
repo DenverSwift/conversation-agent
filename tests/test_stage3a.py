@@ -33,6 +33,7 @@ from conversation_agent.local_slm.stage3a_contract import (
     AgentStyleProfile,
     HardSemanticValidator,
     RelationshipStyleProfile,
+    SafetyConstraints,
     SafetyValidator,
     SoftStyleEvaluator,
     StyleEvidence,
@@ -289,6 +290,35 @@ def test_hard_failure_is_separate_from_soft_deviation() -> None:
         incoming_messages=("Хочу поговорить с руководителем",),
     )
     assert "no_incoming_copy" in copied.errors
+    required = _contract_for(("Что обсуждали?",), formality=0.5)
+    required = type(required)(
+        semantic=type(required.semantic)(
+            **{
+                **required.semantic.__dict__,
+                "required_information": ("Ранее уже обсуждали Telegram-бота.",),
+            }
+        ),
+        style=required.style,
+        safety=required.safety,
+    )
+    assert HardSemanticValidator().validate(
+        required,
+        _output("Да, уже обсуждали бота."),
+    ).checks["required_meaning"]
+    forbidden = _contract_for(("Кто дизайнер?",), formality=0.6)
+    forbidden = type(forbidden)(
+        semantic=type(forbidden.semantic)(
+            **{
+                **forbidden.semantic.__dict__,
+                "forbidden_claims": ("имя дизайнера",),
+            }
+        ),
+        style=forbidden.style,
+        safety=SafetyConstraints(restrictions=("имя дизайнера",)),
+    )
+    refusal = _output("Не могу сообщить имя дизайнера.")
+    assert HardSemanticValidator().validate(forbidden, refusal).valid
+    assert SafetyValidator().validate(forbidden, refusal).valid
 
 
 def _example(
