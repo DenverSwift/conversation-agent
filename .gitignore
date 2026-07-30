@@ -51,6 +51,16 @@ logs/
 # Runtime state
 .runtime/
 
+# Private style dataset contents (schema/docs/empty markers stay tracked)
+datasets/private-style/raw/*
+datasets/private-style/curated/*
+datasets/private-style/rejected/*
+datasets/private-style/manifests/*
+!datasets/private-style/raw/.gitkeep
+!datasets/private-style/curated/.gitkeep
+!datasets/private-style/rejected/.gitkeep
+!datasets/private-style/manifests/.gitkeep
+
 # Local databases and exports
 *.sqlite
 *.sqlite3

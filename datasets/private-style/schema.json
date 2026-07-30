@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private human style training example",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "example_id",
+    "agent_id",
+    "conversation_context",
+    "relationship_context",
+    "semantic_plan",
+    "adaptive_style_plan",
+    "human_target_bubbles",
+    "style_evidence",
+    "provenance",
+    "timestamp",
+    "privacy_status",
+    "approval_status",
+    "source_type",
+    "quality_flags"
+  ],
+  "properties": {
+    "example_id": {"type": "string", "minLength": 1},
+    "agent_id": {"type": "string", "minLength": 1},
+    "conversation_context": {"type": "array", "minItems": 1},
+    "relationship_context": {"type": "object"},
+    "semantic_plan": {"type": "object"},
+    "adaptive_style_plan": {"type": "object"},
+    "human_target_bubbles": {"type": "array", "items": {"type": "string"}},
+    "style_evidence": {"type": "array", "items": {"type": "object"}},
+    "provenance": {"type": "object"},
+    "timestamp": {"type": "string"},
+    "privacy_status": {"type": "string"},
+    "approval_status": {"type": "string"},
+    "source_type": {
+      "enum": [
+        "human_manual",
+        "human_edit",
+        "human_fix",
+        "model_rejected",
+        "model_accepted_unedited",
+        "imported_human_verified"
+      ]
+    },
+    "quality_flags": {"type": "array", "items": {"type": "string"}},
+    "previous_candidate": {"type": "array", "items": {"type": "string"}},
+    "pii_flags": {"type": "array", "items": {"type": "string"}}
+  }
+}
