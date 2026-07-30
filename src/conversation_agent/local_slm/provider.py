@@ -95,6 +95,7 @@ class OpenAICompatibleLocalProvider:
         top_p: float = 0.9,
         min_p: float = 0.0,
         presence_penalty: float = 1.5,
+        repetition_penalty: float = 1.0,
         context_tokens: int = 4096,
         api_key: str = "local-no-key",
         thinking: bool = False,
@@ -112,6 +113,7 @@ class OpenAICompatibleLocalProvider:
         self.top_p = top_p
         self.min_p = min_p
         self.presence_penalty = presence_penalty
+        self.repetition_penalty = repetition_penalty
         self.thinking = thinking
         self.seed = seed
 
@@ -128,6 +130,7 @@ class OpenAICompatibleLocalProvider:
             top_p=config.top_p,
             min_p=config.min_p,
             presence_penalty=config.presence_penalty,
+            repetition_penalty=config.repetition_penalty,
             context_tokens=config.context_tokens,
             thinking=config.thinking,
             seed=config.seed,
@@ -231,6 +234,7 @@ class OpenAICompatibleLocalProvider:
             "top_p": self.top_p,
             "min_p": self.min_p,
             "presence_penalty": self.presence_penalty,
+            "repeat_penalty": self.repetition_penalty,
             "max_tokens": min(max_output_tokens, self.max_output_tokens),
             "response_format": {
                 "type": "json_schema",
@@ -295,6 +299,7 @@ class OpenAICompatibleLocalProvider:
             "top_p": self.top_p,
             "min_p": self.min_p,
             "presence_penalty": self.presence_penalty,
+            "repeat_penalty": self.repetition_penalty,
             "max_tokens": self.max_output_tokens,
             "response_format": (
                 generation_response_format(allowed_actions)

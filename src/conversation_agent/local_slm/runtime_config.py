@@ -22,6 +22,7 @@ class LocalLLMConfig:
     top_p: float = 0.95
     min_p: float = 0.0
     presence_penalty: float = 1.5
+    repetition_penalty: float = 1.0
     thinking: bool = False
     seed: int | None = None
 
@@ -42,6 +43,7 @@ class LocalLLMConfig:
             top_p=_float("LOCAL_LLM_TOP_P", _float("LOCAL_GENERATION_TOP_P", 0.95)),
             min_p=_float("LOCAL_LLM_MIN_P", 0.0),
             presence_penalty=_float("LOCAL_LLM_PRESENCE_PENALTY", 1.5),
+            repetition_penalty=_float("LOCAL_LLM_REPETITION_PENALTY", 1.0),
             thinking=_bool("LOCAL_LLM_THINKING", False),
             seed=_optional_int("LOCAL_LLM_SEED"),
         )
