@@ -23,6 +23,7 @@ from conversation_agent.local_slm.stage25_contract import (
 )
 from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
 from conversation_agent.local_slm.stage25_pipeline import (
+    GPTContractPolicy,
     PolicyContext,
     PolicyPlan,
     RenderedMessage,
@@ -296,6 +297,52 @@ def test_renderer_retry_does_not_repeat_policy() -> None:
     assert result.renderer_retry_count == 1
     assert result.renderer_validation.valid is True
     assert result.renderer_name == "local_qwen_renderer"
+
+
+def test_policy_repairs_invalid_contract_without_writing_a_message() -> None:
+    invalid = _contract().to_dict()
+    invalid.update(
+        {
+            "action": "reaction",
+            "target_bubble_count": 0,
+            "max_bubble_count": 0,
+            "max_total_characters": 0,
+            "max_characters_per_bubble": 0,
+            "max_questions": 0,
+            "reaction": None,
+        }
+    )
+    valid = _contract().to_dict()
+
+    class FakeReply:
+        def __init__(self, value: dict[str, Any], token_count: int) -> None:
+            self.text = json.dumps(value, ensure_ascii=False)
+            self.model = "mock-policy"
+            self.prompt_tokens = token_count
+            self.completion_tokens = token_count
+            self.total_tokens = token_count * 2
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.contents: list[str] = []
+
+        async def create_structured_reply(self, **kwargs: Any) -> FakeReply:
+            self.contents.append(str(kwargs["messages"][0]["content"]))
+            value = invalid if self.calls == 0 else valid
+            self.calls += 1
+            return FakeReply(value, self.calls)
+
+    policy = GPTContractPolicy(api_key="test")
+    client = FakeClient()
+    policy._client = client
+    plan = asyncio.run(policy.plan(_context()))
+    assert policy.calls == 1
+    assert client.calls == 2
+    assert "reaction_missing" in client.contents[1]
+    assert plan.contract.action == "reply"
+    assert "messages" not in plan.raw_output
+    assert plan.usage.total_tokens == 6
 
 
 def test_no_reply_short_circuits_renderer() -> None:

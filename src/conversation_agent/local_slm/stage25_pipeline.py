@@ -170,45 +170,65 @@ class GPTContractPolicy:
             **context.to_prompt_dict(),
             "length_recommendations_by_action": recommendations,
         }
-        reply = await self._client.create_structured_reply(
-            instructions=_policy_instructions(),
-            messages=[
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        payload,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
+        total_usage = Usage()
+        last_error = ResponseContractError(["policy_not_generated"])
+        for attempt in range(2):
+            reply = await self._client.create_structured_reply(
+                instructions=_policy_instructions(),
+                messages=[
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        ),
+                    }
+                ],
+                schema=response_contract_schema(),
+                schema_name="response_contract",
+                max_output_tokens=700,
+                temperature=0.1,
+                top_p=0.9,
+            )
+            total_usage = _add_usage(
+                total_usage,
+                Usage(
+                    prompt_tokens=reply.prompt_tokens,
+                    completion_tokens=reply.completion_tokens,
+                    total_tokens=reply.total_tokens,
+                ),
+            )
+            try:
+                value = json.loads(reply.text)
+                if not isinstance(value, dict):
+                    raise ResponseContractError(["policy_output_not_object"])
+                contract = ResponseContract.from_dict(value)
+                semantic_errors = validate_policy_contract(contract, context)
+                if semantic_errors:
+                    raise ResponseContractError(semantic_errors)
+            except json.JSONDecodeError as exc:
+                last_error = ResponseContractError(["policy_invalid_json"])
+                last_error.__cause__ = exc
+            except ResponseContractError as exc:
+                last_error = exc
+            else:
+                return PolicyPlan(
+                    contract=contract,
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    model=reply.model,
+                    raw_output=reply.text,
+                    usage=total_usage,
+                )
+            if attempt == 0:
+                payload["repair"] = {
+                    "previous_contract": reply.text,
+                    "violations": list(last_error.errors),
+                    "instruction": (
+                        "Return a corrected ResponseContract. Do not write a message."
                     ),
                 }
-            ],
-            schema=response_contract_schema(),
-            schema_name="response_contract",
-            max_output_tokens=700,
-            temperature=0.1,
-            top_p=0.9,
-        )
-        try:
-            value = json.loads(reply.text)
-        except json.JSONDecodeError as exc:
-            raise ResponseContractError(["policy_invalid_json"]) from exc
-        if not isinstance(value, dict):
-            raise ResponseContractError(["policy_output_not_object"])
-        contract = ResponseContract.from_dict(value)
-        semantic_errors = validate_policy_contract(contract, context)
-        if semantic_errors:
-            raise ResponseContractError(semantic_errors)
-        return PolicyPlan(
-            contract=contract,
-            latency_ms=int((time.perf_counter() - started) * 1000),
-            model=reply.model,
-            raw_output=reply.text,
-            usage=Usage(
-                prompt_tokens=reply.prompt_tokens,
-                completion_tokens=reply.completion_tokens,
-                total_tokens=reply.total_tokens,
-            ),
-        )
+        raise last_error
 
 
 class OpenAIContractRenderer:
@@ -528,4 +548,20 @@ def _incoming_messages(context: PolicyContext) -> tuple[str, ...]:
         turn.get("content", "")
         for turn in context.conversation
         if turn.get("role") in {"contact", "user"}
+    )
+
+
+def _add_usage(left: Usage, right: Usage) -> Usage:
+    def add_values(first: int | None, second: int | None) -> int | None:
+        if first is None and second is None:
+            return None
+        return int(first or 0) + int(second or 0)
+
+    return Usage(
+        prompt_tokens=add_values(left.prompt_tokens, right.prompt_tokens),
+        completion_tokens=add_values(
+            left.completion_tokens,
+            right.completion_tokens,
+        ),
+        total_tokens=add_values(left.total_tokens, right.total_tokens),
     )
