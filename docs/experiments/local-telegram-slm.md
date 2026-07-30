@@ -513,3 +513,100 @@ and creates a compact diagnostic pack instead of a rating form. The
 `READY_FOR_DATASET_PROTOTYPE` threshold means only that a small private
 training-data prototype is technically justified. It does not mean production
 readiness, autopilot approval, or guaranteed LoRA success.
+
+## Stage 3A - Adaptive Style And Dataset Prototype
+
+Stage 3A removes presentation decisions from the semantic contract. Message
+style cannot be a universal lowercase, uppercase, bubble, character, emoji,
+greeting, punctuation, or formality rule because the appropriate form changes
+with the agent, relationship, current conversation, topic, urgency, emotion,
+and action.
+
+`ResponseContractV2` has three independent sections:
+
+- `SemanticPlan` controls action, goal, required information, allowed facts,
+  forbidden claims and commitments, uncertainty, handoff, sensitive-data
+  handling, acknowledgement, clarification, and confidence.
+- `AdaptiveStylePlan` describes per-turn ranges, probabilities, casing,
+  punctuation, bubbles, length, questions, greeting, emoji, slang, formality,
+  warmth, directness, completeness, rhythm, lexicon, bounded mirroring,
+  evidence, confidence, and visible source weights.
+- `SafetyConstraints` contains only hard factual and operational prohibitions.
+
+Historical V1 contracts remain readable. Migration extracts semantics and
+safety from V1, then resolves a new style plan for the current turn. It never
+rewrites Stage 2.5 or Stage 2.6 artifacts.
+
+`AgentStyleProfile` aggregates confirmed human messages for one agent.
+`RelationshipStyleProfile` narrows that evidence to a contact or relationship.
+`ConversationStyleSnapshot` describes the current exchange without pretending
+that contact text is permanent agent style. `AdaptiveStyleResolver` combines
+these sources through configurable bootstrap weights. Low evidence produces an
+explicit `neutral_fallback`; it is not persisted as the agent's identity.
+
+Positive `StyleEvidence` is limited to manually written, human-edited,
+human-fix, or imported-and-verified human text. Raw GPT/Ruadapt output,
+benchmark output, rejected drafts, and accepted unchanged AI drafts cannot
+establish human style. Accepted unchanged drafts remain product feedback only.
+
+The resolver permits bounded mirroring of casing, length, tempo, formality,
+bubbles, punctuation, greeting, and ordinary lexicon. It does not mirror
+aggression, toxicity, sensitive language, secrets, promises, or unsafe
+requests. Safety always outranks style.
+
+For `business-004`, the incoming lowercase burst `привет` / `бота для заказов
+делаешь?` supports a concise lowercase plan for that turn. The plan stores its
+conversation evidence and confidence. Formal `business-003` independently
+selects normal casing, so the example never becomes a global lowercase rule.
+
+Validation is split:
+
+- `HardSemanticValidator` checks action, meaning, facts, commitments, handoff,
+  sensitive data, anti-copy, schema, damage, and an adaptive critical bound.
+- `SafetyValidator` checks secrets, credentials, personal data, promises, and
+  restricted actions.
+- `SoftStyleEvaluator` reports separate casing, punctuation, bubbles, length,
+  greeting, emoji, questions, formality, warmth, directness, lexicon, and
+  rhythm deviations. A soft deviation is never a provider failure.
+
+The private dataset prototype lives under `datasets/private-style/`. Git tracks
+only its schema, documentation, and empty markers; raw, curated, rejected, and
+manifest contents are ignored. Dataset commands are local-only:
+
+```powershell
+python -m conversation_agent dataset style-init
+python -m conversation_agent dataset style-add --input example.json `
+  --source-type human_manual
+python -m conversation_agent dataset style-validate `
+  --dataset datasets/private-style
+python -m conversation_agent dataset style-build `
+  --dataset datasets/private-style --output .runtime/style-train.jsonl
+python -m conversation_agent dataset style-stats `
+  --dataset datasets/private-style
+python -m conversation_agent dataset style-inspect `
+  --dataset datasets/private-style --limit 30
+```
+
+The pipeline validates provenance, human origin, context, evidence, targets,
+duplicates, PII flags, credentials, approvals, and privacy state. Frozen
+benchmark fingerprints are rejected as training data before build.
+
+Stage 3A reuses the exact Stage 2.6 contract snapshot and makes no GPT policy
+calls:
+
+```powershell
+python -m conversation_agent benchmark stage3a-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --contracts-from .runtime/benchmarks/stage26-v1 `
+  --renderer ruadapt_qwen3_4b_q6 `
+  --output .runtime/benchmarks/stage3a-v1 `
+  --gpu-required --seed 42
+
+python -m conversation_agent benchmark stage3a-report `
+  --run .runtime/benchmarks/stage3a-v1 `
+  --output .runtime/benchmarks/stage3a-v1/report
+```
+
+`READY_TO_COLLECT_HUMAN_EXAMPLES` means the architecture and local collection
+gates are ready for 200-500 reviewed human examples. It does not authorize
+LoRA training, private-data import, production Telegram, or autopilot.
