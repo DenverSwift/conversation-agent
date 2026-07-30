@@ -63,18 +63,22 @@ No OpenAI provider failures or timeouts occurred. OpenAI token usage was saved,
 but monetary cost was not calculated because no explicit per-million-token
 prices were configured.
 
-## Human Review
+## Human Review And Architecture Gate
 
-Human blind review pending.
+Blind review remains available as optional diagnostic tooling.
 
-- Human-reviewed scenarios: 0
+- Human-reviewed scenarios currently saved: 4
 - Available system-comparison A/B pairs: 99
 - Available same-context A/B pairs: 100
-- Stage 3 decision: pending
+- Diagnostic examples selected automatically: 40
+- Stage 3 decision: `READY_FOR_ARCHITECTURE_EXPERIMENT`
 
-At least 30 genuine human ratings are required before deciding whether the
-experiment is ready for the training-data stage. No human ratings were
-generated or inferred during implementation.
+Human review count no longer gates the architecture experiment. The status
+means only that the frozen automatic results and a representative diagnostic
+pack are available. It does not mean production-ready, selected for training,
+or approved for autopilot. A short qualitative user conclusion is still
+required before a final model decision; no human ratings were generated or
+inferred during implementation.
 
 ## Continue And Reproduce
 
@@ -115,6 +119,12 @@ uv run python -m conversation_agent benchmark stage2-review-ui `
 Generate the current report:
 
 ```powershell
+uv run python -m conversation_agent benchmark diagnostic-pack `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --output .runtime/benchmarks/stage2-system-v1/diagnostic-pack `
+  --max-examples 40 `
+  --seed 42
+
 uv run python -m conversation_agent benchmark stage2-report `
   --run .runtime/benchmarks/stage2-system-v1 `
   --reviews .runtime/benchmarks/stage2-system-v1/reviews `

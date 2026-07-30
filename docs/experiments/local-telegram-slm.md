@@ -272,11 +272,131 @@ uv run python -m conversation_agent benchmark stage2-report `
 ```
 
 Automatic metrics measure format, actions, factual constraints, output shape,
-and latency; they do not establish a quality winner. The Stage 3 decision
-remains pending until at least 30 scenarios have genuine human ratings. The
-reviewer should also account for the limitations of a single reviewer,
-subjective style judgments, and the fact that a failed provider output cannot
-form a complete A/B pair.
+and latency; they do not establish a quality winner. Full human review is now
+optional diagnostic tooling rather than a gate. A compact automatic diagnostic
+pack must exist before the architecture experiment can proceed, and the user
+still gives one qualitative conclusion before a final model choice.
+
+## Stage 2.5 - Response Contract and Diagnostic Review
+
+Stage 2 established that direct Qwen3-0.6B often chose the wrong action,
+repeated incoming questions, and occasionally introduced unsupported details.
+Direct GPT understood the dialogue much better but still tended to write too
+much and to use too many Telegram bubbles. Requiring hundreds of manual scores
+would not add enough information to justify blocking the next architecture
+experiment.
+
+Stage 2.5 separates decision-making from wording:
+
+```mermaid
+flowchart LR
+  A["Conversation context"] --> B["GPT policy"]
+  B --> C["ResponseContract"]
+  C --> D["OpenAI renderer"]
+  C --> E["Local Qwen renderer"]
+  D --> F["Hard validator"]
+  E --> F
+  F --> G["Saved diagnostic results"]
+```
+
+`ResponseContract` fixes the action, goal, allowed and forbidden facts, target
+and maximum bubble counts, total and per-bubble character limits, question
+count, tone, relationship style, greeting and emoji permissions, reaction,
+handoff state, and confidence before any final message is written.
+`LengthPlanner` adapts these limits to the action, relationship, request
+complexity, available facts, urgency, and conversation history. Benchmark
+expected actions never enter the runtime policy prompt.
+
+The hard validator checks action, bubbles, characters, questions, greetings,
+emoji, required and forbidden facts, thinking text, assistant meta phrases,
+headings, lists, repeated incoming questions, empty replies, reactions, and
+handoffs. A renderer gets one repair attempt with the exact violations. The
+same renderer performs that retry; OpenAI never repairs local output, and the
+policy is not called again for a renderer failure.
+
+The four comparison pipelines are:
+
+- `openai_direct`: saved Stage 2 GPT baseline.
+- `local_direct`: saved Stage 2 Qwen baseline.
+- `gpt_policy_openai_renderer`: GPT policy plus OpenAI wording.
+- `gpt_policy_local_renderer`: the same GPT contract plus local Qwen wording.
+
+Install and verify the CUDA build without replacing the CPU build:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\install_llama_cpp_cuda.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\start_qwen3_06b_cuda.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File `
+  scripts\local_slm\check_gpu_offload.ps1
+uv run python -m conversation_agent local-model-doctor
+```
+
+The installer downloads official llama.cpp Windows CUDA archives under
+`.runtime/`, discovers the supported GPU-layer flag from `llama-server
+--help`, and verifies `--list-devices`. The start and check scripts require
+CUDA initialization, nonzero offloaded layers, a visible `llama-server`
+process in `nvidia-smi`, increased VRAM use, healthy model endpoints, and a
+real completion. `Ready: YES` is never based on `nvidia-smi` alone. CPU
+inference remains available through the original scripts; a Stage 2.5 run only
+allows it when `--allow-cpu` is explicitly supplied.
+
+Run the architecture experiment:
+
+```powershell
+uv run python -m conversation_agent benchmark stage25-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --pipelines openai_direct,local_direct,gpt_policy_openai_renderer,gpt_policy_local_renderer `
+  --output .runtime/benchmarks/stage25-quick20 `
+  --baseline .runtime/benchmarks/stage2-system-v1 `
+  --seed 42 `
+  --scenario-limit 20 `
+  --gpu-required
+
+uv run python -m conversation_agent benchmark stage25-run `
+  --dataset benchmarks/local_slm_stage2_v1/scenarios.jsonl `
+  --pipelines gpt_policy_openai_renderer,gpt_policy_local_renderer `
+  --output .runtime/benchmarks/stage25-v1 `
+  --baseline .runtime/benchmarks/stage2-system-v1 `
+  --seed 42 `
+  --gpu-required
+```
+
+The quick selector covers no-reply, handoff, reaction, incomplete requests,
+hallucination risk, conflict, friendly and formal conversations,
+multi-message bursts, and short acknowledgements. `--resume` skips completed
+artifacts, while `--retry-errors` retries explicit provider, contract, or
+renderer failures. `--no-openai` and `--no-local` remove dependent pipelines;
+no fake provider is substituted.
+
+Create compact diagnostics and the final report:
+
+```powershell
+uv run python -m conversation_agent benchmark diagnostic-pack `
+  --run .runtime/benchmarks/stage2-system-v1 `
+  --output .runtime/benchmarks/stage2-system-v1/diagnostic-pack `
+  --max-examples 40 `
+  --seed 42
+
+uv run python -m conversation_agent benchmark stage25-report `
+  --run .runtime/benchmarks/stage25-v1 `
+  --baseline .runtime/benchmarks/stage2-system-v1 `
+  --output .runtime/benchmarks/stage25-v1/report
+```
+
+The diagnostic pack is deterministic for a fixed seed, contains no duplicate
+scenario IDs, labels providers openly, and selects representative error and
+control examples. It asks for one short qualitative conclusion, not a rating
+form for every scenario. The blind review CLI and browser UI remain available
+when more diagnosis is useful.
+
+`READY_FOR_ARCHITECTURE_EXPERIMENT` only means the frozen benchmark and
+automatic artifacts are adequate for testing this decomposition. It does not
+mean production-ready, autopilot-ready, selected for training, or approved by
+the user. See
+[Stage 2.5 results](local-telegram-slm-stage25-results.md) for the real CUDA
+run and current technical recommendation.
 
 ## Fallback
 
