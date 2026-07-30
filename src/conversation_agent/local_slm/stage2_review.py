@@ -163,9 +163,13 @@ def run_interactive_review(
     while index < len(pairs):
         pair = pairs[index]
         _print_blind_payload(pair.payload, index=index, total=len(pairs))
-        command = input(
-            "Enter 'rate', 'skip', 'back', 'progress', or 'quit': "
-        ).strip().lower()
+        try:
+            command = input(
+                "Enter 'rate', 'skip', 'back', 'progress', or 'quit': "
+            )
+        except EOFError:
+            break
+        command = command.replace("\x00", "").lstrip("\ufeff").strip().lower()
         if command == "quit":
             break
         if command == "skip":

@@ -106,6 +106,7 @@ async def run_stage2_benchmark(
         "max_output_tokens": options.max_output_tokens,
         "seed": options.seed,
         "repetitions": options.repetitions,
+        "openai_pricing_per_million_tokens": _openai_pricing(),
     }
     config_value = {
         "benchmark_fingerprint": benchmark.fingerprint,
@@ -256,7 +257,9 @@ async def run_stage2_benchmark(
                     status["errors"] += 1
                     status["status"] = "interrupted"
                     status["reason"] = record["provider_error"]
-                    stop_after_error = True
+                    stop_after_error = _is_fatal_provider_error(exc)
+                    if not stop_after_error:
+                        status["status"] = "running"
                 record["completed_at"] = datetime.now(UTC).isoformat()
                 atomic_write_json(result_path, record)
                 _write_live_summary(options.output_dir, run_meta)
@@ -551,6 +554,27 @@ def _write_live_summary(
         "result_count": len(results),
         "updated_at": datetime.now(UTC).isoformat(),
     }
+    pricing = run_meta.get("generation_config", {}).get(
+        "openai_pricing_per_million_tokens",
+        {},
+    )
+    openai_metrics = summary["metrics"].get("openai_gpt4o_mini")
+    if (
+        isinstance(openai_metrics, dict)
+        and isinstance(pricing, dict)
+        and pricing.get("input") is not None
+        and pricing.get("output") is not None
+    ):
+        usage = openai_metrics.get("openai_token_usage")
+        if isinstance(usage, dict):
+            usage["cost"] = round(
+                (int(usage.get("prompt_tokens", 0)) / 1_000_000)
+                * float(pricing["input"])
+                + (int(usage.get("completion_tokens", 0)) / 1_000_000)
+                * float(pricing["output"]),
+                6,
+            )
+            usage["cost_note"] = "Calculated from explicit per-million-token pricing config."
     atomic_write_json(output_dir / "summary.json", summary)
     return summary
 
@@ -584,6 +608,51 @@ def _safe_error(exc: Exception) -> str:
     value = re.sub(r"sk-[A-Za-z0-9_-]+", "[REDACTED_API_KEY]", value)
     value = re.sub(r"Bearer\s+\S+", "Bearer [REDACTED]", value, flags=re.IGNORECASE)
     return value[:2000]
+
+
+def _is_fatal_provider_error(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    return (
+        isinstance(exc, (TimeoutError, ConnectionError))
+        or any(
+            marker in name
+            for marker in (
+                "authentication",
+                "permission",
+                "ratelimit",
+                "timeout",
+                "connection",
+            )
+        )
+        or any(
+            marker in text
+            for marker in (
+                "endpoint unavailable",
+                "connection refused",
+                "api key",
+                "status code: 401",
+                "status code: 429",
+            )
+        )
+    )
+
+
+def _openai_pricing() -> dict[str, float | None]:
+    return {
+        "input": _optional_float_env("OPENAI_INPUT_PRICE_PER_MILLION"),
+        "output": _optional_float_env("OPENAI_OUTPUT_PRICE_PER_MILLION"),
+    }
+
+
+def _optional_float_env(name: str) -> float | None:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    value = float(raw)
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
+    return value
 
 
 def _windows_ram_bytes() -> int | None:

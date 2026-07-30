@@ -138,6 +138,20 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         for item in completed
         if isinstance(item.get("tokens_per_second"), (int, float))
     ]
+    token_usage = {
+        "prompt_tokens": sum(
+            int(item.get("prompt_tokens") or 0) for item in completed
+        ),
+        "completion_tokens": sum(
+            int(item.get("completion_tokens") or 0) for item in completed
+        ),
+        "total_tokens": sum(
+            int(item.get("total_tokens") or 0) for item in completed
+        ),
+        "cost": None,
+        "cost_note": "Provide explicit pricing config to calculate monetary cost.",
+    }
+    provider_name = str(results[0].get("provider", "")) if results else ""
     total = len(results)
     return {
         "total_scenarios": total,
@@ -210,19 +224,10 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "median_latency_ms": _percentile(latencies, 0.5),
         "p90_latency_ms": _percentile(latencies, 0.9),
         "average_tokens_per_second": _mean(tokens_per_second),
-        "openai_token_usage": {
-            "prompt_tokens": sum(
-                int(item.get("prompt_tokens") or 0) for item in completed
-            ),
-            "completion_tokens": sum(
-                int(item.get("completion_tokens") or 0) for item in completed
-            ),
-            "total_tokens": sum(
-                int(item.get("total_tokens") or 0) for item in completed
-            ),
-            "cost": None,
-            "cost_note": "Provide explicit pricing config to calculate monetary cost.",
-        },
+        "token_usage": token_usage,
+        "openai_token_usage": (
+            dict(token_usage) if provider_name == "openai_gpt4o_mini" else None
+        ),
         "assistant_phrase_flags": dict(
             Counter(
                 flag
