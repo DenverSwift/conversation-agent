@@ -45,6 +45,12 @@ def build_batch_review(
     unknown.sort(key=_episode_timestamp)
     batches = _group_unknown_episodes(unknown, max_batch_size=max_batch_size)
     pii_records = _read_jsonl(reconciliation / "pii-records.jsonl")
+    pii_count = sum(
+        item.get("pii_type") != "sensitive_self_harm" for item in pii_records
+    )
+    sensitive_count = sum(
+        item.get("pii_type") == "sensitive_self_harm" for item in pii_records
+    )
     pii_by_episode = _pii_by_episode(pii_records)
     output.mkdir(parents=True, exist_ok=True)
     batch_rows: list[dict[str, Any]] = []
@@ -187,7 +193,8 @@ def build_batch_review(
         "authoritative_human_episodes": len(authoritative_human),
         "confirmed_ai_episodes": len(confirmed_ai),
         "conflicting_episodes": len(conflicting),
-        "pii_findings": len(pii_records),
+        "pii_findings": pii_count,
+        "sensitive_content_findings": sensitive_count,
         "suggested_first_pilot_size": len(proposed),
         "batch_decisions_pending": len(batches),
         "pii_decisions_pending": len(pii_records),
@@ -217,7 +224,8 @@ def build_batch_review(
         "confirmed_ai_episodes": len(confirmed_ai),
         "authoritative_human_episodes": len(authoritative_human),
         "conflicting_episodes": len(conflicting),
-        "pii_findings": len(pii_records),
+        "pii_findings": pii_count,
+        "sensitive_content_findings": sensitive_count,
         "suggested_first_pilot_size": len(proposed),
     }
 

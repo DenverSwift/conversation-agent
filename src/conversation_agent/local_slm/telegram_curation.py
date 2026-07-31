@@ -158,6 +158,12 @@ def reconcile_telegram_preview(options: ReconciliationOptions) -> dict[str, Any]
         item["match_method"] == "secondary_only"
         for item in reconciled_messages
     )
+    pii_count = sum(
+        item["pii_type"] != "sensitive_self_harm" for item in pii_records
+    )
+    sensitive_count = sum(
+        item["pii_type"] == "sensitive_self_harm" for item in pii_records
+    )
     options.output.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, Any] = {
         "schema_version": 1,
@@ -185,7 +191,8 @@ def reconcile_telegram_preview(options: ReconciliationOptions) -> dict[str, Any]
             or item["stage3c"]["classification"] == "unknown_historical"
             for item in reconciled_episodes
         ),
-        "pii_findings": len(pii_records),
+        "pii_findings": pii_count,
+        "sensitive_content_findings": sensitive_count,
         "external_services_called": [],
         "llm_used": False,
         "training_performed": False,
@@ -195,6 +202,8 @@ def reconcile_telegram_preview(options: ReconciliationOptions) -> dict[str, Any]
         "schema_version": 1,
         "message_counts": dict(sorted(counts.items())),
         "episode_counts": dict(sorted(episode_counts.items())),
+        "pii_findings": pii_count,
+        "sensitive_content_findings": sensitive_count,
         "confirmed_ai_excluded_from_human_targets": episode_counts.get(
             "ai_generated", 0
         ),
@@ -245,7 +254,8 @@ def reconcile_telegram_preview(options: ReconciliationOptions) -> dict[str, Any]
         "candidate_episodes_after_filtering": manifest[
             "candidate_episodes_after_filtering"
         ],
-        "pii_findings": len(pii_records),
+        "pii_findings": pii_count,
+        "sensitive_content_findings": sensitive_count,
     }
 
 
@@ -452,6 +462,7 @@ def heuristic_review_signals(
     words = re.findall(r"[A-Za-z\u0400-\u04ff]+", text)
     if len(words) >= 14 and text.rstrip().endswith((".", "?", "!")):
         flags.append("highly_complete_punctuation")
+    flags.extend(sensitive_content_flags(text))
     neighbors = [item for item in neighbor_texts if item.strip()]
     neighbor_lengths = [len(item) for item in neighbors]
     baseline = sum(neighbor_lengths) / len(neighbor_lengths) if neighbor_lengths else len(text)
@@ -459,6 +470,25 @@ def heuristic_review_signals(
     if shift >= 0.65:
         flags.append("abrupt_length_shift")
     return sorted(set(flags)), round(shift, 6)
+
+
+def sensitive_content_flags(text: str) -> list[str]:
+    patterns = (
+        r"\b(?:suicide|suicidal|kill myself|self[- ]harm)\b",
+        r"\u0443\u0431\u0438\u0442\u044c \u0441\u0435\u0431\u044f",
+        (
+            r"\u043f\u043e\u043a\u043e\u043d\u0447\u0438\u0442\u044c "
+            r"\u0441 \u0441\u043e\u0431\u043e\u0439"
+        ),
+        r"\u043d\u0435 \u0445\u043e\u0447\u0443 \u0436\u0438\u0442\u044c",
+        r"\u0441\u0443\u0438\u0446\u0438\u0434",
+    )
+    normalized = text.casefold()
+    return (
+        ["sensitive_self_harm"]
+        if any(re.search(pattern, normalized) for pattern in patterns)
+        else []
+    )
 
 
 def reconciliation_fingerprint(path: Path) -> str:
@@ -806,6 +836,28 @@ def _build_pii_records(
             }
         )
         existing.add(key)
+    for episode in episodes:
+        episode_id = str(episode["example_id"])
+        text = " ".join(
+            [
+                *episode.get("incoming", {}).get("messages", []),
+                *episode.get("human_target", {}).get("messages", []),
+            ]
+        )
+        if not sensitive_content_flags(text):
+            continue
+        records.append(
+            {
+                "record_id": (
+                    "sensitive-"
+                    + hashlib.sha256(episode_id.encode()).hexdigest()[:12]
+                ),
+                "message_record_id": None,
+                "episode_ids": [episode_id],
+                "pii_type": "sensitive_self_harm",
+                "suggested_action": "exclude",
+            }
+        )
     return records
 
 

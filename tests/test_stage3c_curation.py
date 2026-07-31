@@ -31,6 +31,7 @@ from conversation_agent.local_slm.telegram_curation import (
     reconcile_episode,
     reconcile_outgoing_message,
     reconciliation_fingerprint,
+    sensitive_content_flags,
 )
 from conversation_agent.settings import Settings
 
@@ -339,6 +340,9 @@ def test_conflict_unknown_temporal_and_heuristics_never_invent_verdict() -> None
     assert unknown["heuristic_flags"]
     assert unknown["heuristics_changed_classification"] is False
     assert heuristic_review_signals(unknown["heuristic_flags"][0], [])[0] is not None
+    assert sensitive_content_flags("I want to kill myself") == [
+        "sensitive_self_harm"
+    ]
 
 
 def test_ai_episode_is_not_human_target_and_unknown_needs_review() -> None:

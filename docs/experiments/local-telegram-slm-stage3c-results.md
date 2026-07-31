@@ -46,7 +46,8 @@ Heuristic flags changed no provenance verdict.
 - PII review records: 24
 - Batch count: 19
 - Suggested balanced first pilot: 82
-- Reconciliation fingerprint prefix: `232ea39ae9bb`
+- Reconciliation fingerprint prefix: `a9b13a95a15f`
+- Sensitive self-harm review flags: 0
 - Batch decisions approved: 0
 - PII decisions approved: 0
 
