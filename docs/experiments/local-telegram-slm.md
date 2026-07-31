@@ -684,3 +684,87 @@ observations remain descriptive statistics, never fixed messaging rules.
 Stage 3B performs no training, benchmark import, synthetic generation, LoRA,
 QLoRA, or weight download. The production generation default remains
 `openai_only`.
+
+## Stage 3C - Provenance Recovery And Dataset Curation
+
+Stage 3B cannot be confirmed directly because its worktree had no local
+feedback database. Consequently, every historical outgoing message initially
+remained unknown, and the review sample could contain both human writing and
+AI-generated replies. Treating all unknown messages as human would contaminate
+the style dataset.
+
+Stage 3C discovers provenance sources only inside the current repository, its
+Git worktrees, configured project runtime paths, and explicit `--extra-root`
+paths. It never scans the whole disk. SQLite sources are opened with URI
+`mode=ro`; discovery reports aliases, schemas, columns, counts, capability
+markers, and date ranges without logging private text.
+
+```powershell
+python -m conversation_agent dataset provenance-discover `
+  --repo-root . `
+  --include-git-worktrees `
+  --output .runtime/private-imports/telegram/<pilot-stage3c>/discovery
+
+python -m conversation_agent dataset telegram-reconcile `
+  --preview .runtime/private-imports/telegram/<pilot> `
+  --discovery .runtime/private-imports/telegram/<pilot-stage3c>/discovery `
+  --output .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --read-only
+```
+
+Authoritative evidence includes exact chat/message mappings and strong
+destination plus exact normalized hash plus timestamp matches backed by an
+explicit human or AI source type. Text-only similarity, temporal cutoffs, and
+assistant-like language are never authoritative. A user-provided
+`--ai-operation-start` timestamp only changes review grouping and confidence.
+
+Known AI sends are excluded from positive targets and both style profiles.
+Confirmed human corrections retain only the final human text as a candidate.
+Conflicting authoritative records enter a separate queue. Unknown messages
+remain review-required.
+
+The deterministic heuristic detector may flag generic offers, assistant-like
+follow-up questions, safety-like templates, punctuation shifts, and abrupt
+length changes. These flags only prioritize review and cannot change a
+provenance class.
+
+Unknown episodes are grouped into bounded batches using time continuity,
+conversation order, provenance availability, nearby authoritative records,
+and style continuity:
+
+```powershell
+python -m conversation_agent dataset telegram-batch-review-build `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --output .runtime/private-imports/telegram/<pilot-stage3c>/batch-review `
+  --max-batch-size 25
+```
+
+`batch-decisions.csv` supports `include_human`, `exclude_ai`,
+`exclude_private`, `needs_individual_review`, and `skip`.
+`pii-review.csv` supports `redact`, `replace_with_alias`, `exclude`, and
+`keep_with_explicit_approval`. Empty fields are never approval.
+
+Curated confirmation is intentionally separate from the Stage 3B command. It
+requires the exact reconciliation fingerprint, explicit consent, valid batch
+decisions, resolved PII, human provenance, and a 50-100 example cap:
+
+```powershell
+python -m conversation_agent dataset telegram-confirm-curated `
+  --preview .runtime/private-imports/telegram/<pilot> `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --batch-decisions .runtime/private-imports/telegram/<pilot-stage3c>/batch-review/batch-decisions.csv `
+  --pii-decisions .runtime/private-imports/telegram/<pilot-stage3c>/batch-review/pii-review.csv `
+  --fingerprint <reconciliation-fingerprint> `
+  --consent-confirmed `
+  --max-examples 100
+```
+
+The command is never invoked automatically. After a future curated
+confirmation, `dataset style-profile-build` creates separate agent and
+relationship profiles using verified human data only. Profiles remain
+distributions with evidence and confidence, not global casing, bubble, length,
+emoji, greeting, or punctuation rules.
+
+Stage 3C does not call OpenAI, Ruadapt, embeddings, or external classifiers. It
+does not train, create synthetic examples, download weights, alter Telegram,
+or change the production `openai_only` default.
