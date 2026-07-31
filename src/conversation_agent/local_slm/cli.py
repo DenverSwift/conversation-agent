@@ -11,6 +11,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.local_slm.batch_curation import (
+    build_batch_review,
+    build_curated_style_profiles,
+    confirm_curated_dataset,
+)
 from conversation_agent.local_slm.benchmark import run_benchmark
 from conversation_agent.local_slm.context import LocalContextBuilder
 from conversation_agent.local_slm.dataset import build_sft_dataset
@@ -23,6 +28,9 @@ from conversation_agent.local_slm.private_style_dataset import (
     inspect_style_dataset,
     style_dataset_stats,
     validate_style_dataset,
+)
+from conversation_agent.local_slm.provenance_recovery import (
+    discover_provenance_sources,
 )
 from conversation_agent.local_slm.provider import (
     FakeLocalGenerationProvider,
@@ -57,6 +65,10 @@ from conversation_agent.local_slm.stage26 import (
     Stage26Options,
     generate_stage26_report,
     run_stage26,
+)
+from conversation_agent.local_slm.telegram_curation import (
+    ReconciliationOptions,
+    reconcile_telegram_preview,
 )
 from conversation_agent.local_slm.telegram_import import (
     TelegramPreviewOptions,
@@ -190,6 +202,58 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     )
     telegram_privacy.add_argument("--path", required=True)
     telegram_privacy.set_defaults(func=_dataset_privacy_check)
+
+    provenance_discover = style_dataset_sub.add_parser(
+        "provenance-discover",
+        help="Discover local provenance databases in approved project roots",
+    )
+    provenance_discover.add_argument("--repo-root", default=".")
+    provenance_discover.add_argument("--include-git-worktrees", action="store_true")
+    provenance_discover.add_argument("--extra-root", action="append", default=[])
+    provenance_discover.add_argument("--output", required=True)
+    provenance_discover.set_defaults(func=_dataset_provenance_discover)
+
+    telegram_reconcile = style_dataset_sub.add_parser(
+        "telegram-reconcile",
+        help="Reconcile Stage 3B messages against local audit provenance",
+    )
+    telegram_reconcile.add_argument("--preview", required=True)
+    telegram_reconcile.add_argument("--discovery", required=True)
+    telegram_reconcile.add_argument("--output", required=True)
+    telegram_reconcile.add_argument("--read-only", action="store_true")
+    telegram_reconcile.add_argument("--ai-operation-start")
+    telegram_reconcile.set_defaults(func=_dataset_telegram_reconcile)
+
+    batch_review = style_dataset_sub.add_parser(
+        "telegram-batch-review-build",
+        help="Build deterministic Stage 3C batch and PII review files",
+    )
+    batch_review.add_argument("--reconciliation", required=True)
+    batch_review.add_argument("--output", required=True)
+    batch_review.add_argument("--max-batch-size", type=int, default=25)
+    batch_review.set_defaults(func=_dataset_telegram_batch_review_build)
+
+    confirm_curated = style_dataset_sub.add_parser(
+        "telegram-confirm-curated",
+        help="Confirm only reviewed and provenance-safe Telegram examples",
+    )
+    confirm_curated.add_argument("--preview", required=True)
+    confirm_curated.add_argument("--reconciliation", required=True)
+    confirm_curated.add_argument("--batch-decisions", required=True)
+    confirm_curated.add_argument("--pii-decisions", required=True)
+    confirm_curated.add_argument("--fingerprint", required=True)
+    confirm_curated.add_argument("--consent-confirmed", action="store_true")
+    confirm_curated.add_argument("--max-examples", type=int, default=100)
+    confirm_curated.add_argument("--dataset", default="datasets/private-style")
+    confirm_curated.set_defaults(func=_dataset_telegram_confirm_curated)
+
+    style_profile = style_dataset_sub.add_parser(
+        "style-profile-build",
+        help="Build adaptive profiles from a curated human-only dataset",
+    )
+    style_profile.add_argument("--dataset", required=True)
+    style_profile.add_argument("--output", required=True)
+    style_profile.set_defaults(func=_dataset_style_profile_build)
 
     benchmark = subparsers.add_parser("benchmark", help="Run fake/local benchmark")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
@@ -691,6 +755,59 @@ def _dataset_telegram_review_stats(args: argparse.Namespace) -> dict[str, Any]:
 
 def _dataset_privacy_check(args: argparse.Namespace) -> dict[str, Any]:
     return privacy_check(Path(args.path))
+
+
+def _dataset_provenance_discover(args: argparse.Namespace) -> dict[str, Any]:
+    return discover_provenance_sources(
+        repo_root=Path(args.repo_root),
+        output=Path(args.output),
+        include_git_worktrees=bool(args.include_git_worktrees),
+        extra_roots=[Path(item) for item in args.extra_root],
+    )
+
+
+def _dataset_telegram_reconcile(args: argparse.Namespace) -> dict[str, Any]:
+    return reconcile_telegram_preview(
+        ReconciliationOptions(
+            preview=Path(args.preview),
+            discovery=Path(args.discovery),
+            output=Path(args.output),
+            read_only=bool(args.read_only),
+            ai_operation_start=parse_optional_datetime(args.ai_operation_start),
+        )
+    )
+
+
+def _dataset_telegram_batch_review_build(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return build_batch_review(
+        reconciliation=Path(args.reconciliation),
+        output=Path(args.output),
+        max_batch_size=args.max_batch_size,
+    )
+
+
+def _dataset_telegram_confirm_curated(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return confirm_curated_dataset(
+        preview=Path(args.preview),
+        reconciliation=Path(args.reconciliation),
+        batch_decisions=Path(args.batch_decisions),
+        pii_decisions=Path(args.pii_decisions),
+        fingerprint=args.fingerprint,
+        consent_confirmed=bool(args.consent_confirmed),
+        max_examples=args.max_examples,
+        dataset_root=Path(args.dataset),
+    )
+
+
+def _dataset_style_profile_build(args: argparse.Namespace) -> dict[str, Any]:
+    return build_curated_style_profiles(
+        dataset=Path(args.dataset),
+        output=Path(args.output),
+    )
 
 
 def _train_dry_run(args: argparse.Namespace) -> dict[str, Any]:
