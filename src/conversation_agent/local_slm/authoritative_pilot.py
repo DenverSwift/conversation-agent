@@ -205,15 +205,17 @@ def select_authoritative_pilot(
         _selected_review_markdown(enriched),
         encoding="utf-8",
     )
+    stage3c_root = reconciliation.parent
+    preview_name = stage3c_root.name.removesuffix("-stage3c")
+    preview = stage3c_root.parent / preview_name
     confirmation = (
         "python -m conversation_agent dataset telegram-confirm-curated "
-        '--preview ".runtime\\private-imports\\telegram\\friend-pilot" '
-        '--reconciliation ".runtime\\private-imports\\telegram\\'
-        'friend-pilot-stage3c\\reconciliation" '
+        f'--preview "{preview}" '
+        f'--reconciliation "{reconciliation}" '
         f'--pilot-selection "{output}" '
         f'--pii-decisions "{output.parent / "final-pii-decisions.csv"}" '
         f"--fingerprint {selection_fp} --consent-confirmed "
-        "--authoritative-only --max-examples 82"
+        f"--authoritative-only --max-examples {max_examples}"
     )
     (output.parent / "confirmation-command.txt").write_text(
         confirmation + "\n",
