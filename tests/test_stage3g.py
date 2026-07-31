@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest  # pyright: ignore[reportMissingImports]
 
+from conversation_agent.local_slm import stage3g_review_ui
 from conversation_agent.local_slm.models import GenerationResult
 from conversation_agent.local_slm.stage2_dataset import atomic_write_json
 from conversation_agent.local_slm.stage3a_contract import (
@@ -352,6 +353,31 @@ def test_reveal_does_not_modify_rating(tmp_path: Path) -> None:
     before = (state.review_dir / "private__one.json").read_bytes()
     state.reveal_target("private__one")
     assert (state.review_dir / "private__one.json").read_bytes() == before
+
+
+def test_review_ui_reuses_matching_server(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _review_state(tmp_path)
+    monkeypatch.setattr(
+        stage3g_review_ui,
+        "Stage3GReviewServer",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("occupied")),
+    )
+    monkeypatch.setattr(
+        stage3g_review_ui,
+        "_existing_review_ui",
+        lambda _port: {"reviewer": "denver", "seed": 42, "reviewed": 3, "total": 30},
+    )
+    result = stage3g_review_ui.run_stage3g_review_ui(
+        run_dir=tmp_path,
+        reviewer="denver",
+        seed=42,
+        open_browser=False,
+    )
+    assert result["already_running"] is True
+    assert result["reviewed"] == 3
 
 
 def test_no_telegram_client_is_created() -> None:

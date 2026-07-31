@@ -14,6 +14,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from urllib.request import urlopen
 
 from conversation_agent.local_slm.stage2_dataset import atomic_write_json
 
@@ -301,7 +302,30 @@ def run_stage3g_review_ui(
         raise ValueError("port must be between 1 and 65535")
     state = Stage3GReviewState(run_dir=run_dir, reviewer=reviewer, seed=seed)
     handler = partial(Stage3GReviewHandler, review_state=state)
-    server = Stage3GReviewServer(("127.0.0.1", port), handler)
+    try:
+        server = Stage3GReviewServer(("127.0.0.1", port), handler)
+    except OSError as exc:
+        existing = _existing_review_ui(port)
+        url = f"http://127.0.0.1:{port}/"
+        if (
+            existing
+            and existing.get("reviewer") == reviewer
+            and existing.get("seed") == seed
+        ):
+            print(f"Stage 3G blind review UI is already running: {url}")
+            if open_browser:
+                webbrowser.open(url)
+            return {
+                "url": url,
+                "reviewer": reviewer,
+                "reviewed": int(existing.get("reviewed", 0)),
+                "total": int(existing.get("total", 0)),
+                "already_running": True,
+            }
+        raise RuntimeError(
+            f"Port {port} is already in use by another process. "
+            f"Retry with --port {port + 1}."
+        ) from exc
     url = f"http://127.0.0.1:{server.server_port}/"
     print(f"Stage 3G blind review UI: {url}")
     print("Press Ctrl+C to stop.")
@@ -360,3 +384,17 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 def _load_optional_json(path: Path) -> dict[str, Any] | None:
     return _load_json(path) if path.is_file() else None
+
+
+def _existing_review_ui(port: int) -> dict[str, Any] | None:
+    try:
+        with urlopen(
+            f"http://127.0.0.1:{port}/api/review",
+            timeout=0.75,
+        ) as response:
+            if response.status != HTTPStatus.OK:
+                return None
+            value = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
