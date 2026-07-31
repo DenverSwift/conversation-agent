@@ -13,4 +13,10 @@ context, style evidence, privacy review, and explicit approval. Credential
 patterns are rejected before an artifact is written. PII review flags are
 preserved in manifests and are not silently removed.
 
+`telegram-import-preview.schema.json` documents the unconfirmed local preview
+episode. Its source type is `imported_human_candidate`, its semantic plan is
+null, and it cannot become positive style evidence. Only the separately
+reviewed and confirmed alias-based form may use
+`imported_human_verified`.
+
 The Stage 2 benchmark is evaluation-only and must never be copied here.

@@ -610,3 +610,77 @@ python -m conversation_agent benchmark stage3a-report `
 `READY_TO_COLLECT_HUMAN_EXAMPLES` means the architecture and local collection
 gates are ready for 200-500 reviewed human examples. It does not authorize
 LoRA training, private-data import, production Telegram, or autopilot.
+
+## Stage 3B - Private Telegram Human Example Import
+
+Stage 3B adds a local, read-only history importer for a single Telegram user
+resolved strictly by numeric ID. It reuses the configured Telethon API
+credentials and session path. It does not search by display name or username,
+download media, send messages, add reactions, intentionally change read state,
+or create a second persistent session.
+
+The workflow is preview-before-confirm:
+
+```powershell
+python -m conversation_agent dataset telegram-preview `
+  --contact-id <numeric-user-id> `
+  --limit 1500 `
+  --output .runtime/private-imports/telegram/<pilot> `
+  --include-media-metadata `
+  --exclude-forwarded
+
+python -m conversation_agent dataset privacy-check `
+  --path .runtime/private-imports/telegram/<pilot>
+
+python -m conversation_agent dataset telegram-review-stats `
+  --preview .runtime/private-imports/telegram/<pilot>
+```
+
+The preview records a content fingerprint and creates an empty
+`review-decisions.csv`. Empty review cells never count as approval. A future
+confirmed import requires the existing preview, the exact fingerprint,
+successful validation, explicit per-example include/privacy/provenance
+decisions, and `--consent-confirmed`:
+
+```powershell
+python -m conversation_agent dataset telegram-confirm `
+  --preview .runtime/private-imports/telegram/<pilot> `
+  --decisions .runtime/private-imports/telegram/<pilot>/review-decisions.csv `
+  --fingerprint <preview-fingerprint> `
+  --consent-confirmed
+```
+
+Preview generation never invokes that command.
+
+Incoming contact messages are conversation context only. Consecutive outgoing
+owner messages form separate bubbles in one human turn. Sender changes,
+explicit replies, service events, and the configurable `--turn-gap-seconds`
+close turns. Media files are not downloaded; optional type and caption
+metadata are retained. The importer stores excluded records and reasons
+instead of silently dropping forwarded, via-bot, service, media-only,
+AI-generated, duplicate, or unsafe candidate material.
+
+Outgoing provenance is checked against the local feedback database and send
+mapping. Known AI-generated messages cannot become targets or style evidence.
+Recorded human corrections may become candidates. Unmapped historical
+messages remain `imported_human_candidate` with review required until an
+explicit confirmed batch changes them to `imported_human_verified`.
+`SemanticPlan` stays null with semantic enrichment pending; no model invents
+goals, actions, or facts during import.
+
+Raw history and Telegram IDs remain under `.runtime/private-imports/`, which
+is ignored by Git. Human-readable preview episodes are pseudonymized by a
+deterministic local PII and secret scanner. Confirmed private examples remain
+under ignored dataset paths and use aliases without Telegram IDs.
+Conversation text is not sent to OpenAI, a local model, embeddings, telemetry,
+or any other external service.
+
+The agent and relationship style previews use only non-AI outgoing candidate
+text. They store observed distributions, evidence counts, confidence, date
+range, recency, provenance, and fallback status. Lowercase, uppercase,
+punctuation, bubble count, length, emoji, greeting, slang, and formality
+observations remain descriptive statistics, never fixed messaging rules.
+
+Stage 3B performs no training, benchmark import, synthetic generation, LoRA,
+QLoRA, or weight download. The production generation default remains
+`openai_only`.
