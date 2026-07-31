@@ -16,6 +16,11 @@ from conversation_agent.local_slm.authoritative_pilot import (
     resolve_profile_preview,
     select_authoritative_pilot,
 )
+from conversation_agent.local_slm.authorship_curation import (
+    apply_conservative_authorship,
+    confirm_clean_pilot,
+    reconcile_authorship,
+)
 from conversation_agent.local_slm.batch_curation import (
     build_batch_review,
     build_curated_style_profiles,
@@ -290,6 +295,46 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     pilot_select.add_argument("--max-examples", type=int, default=82)
     pilot_select.add_argument("--output", required=True)
     pilot_select.set_defaults(func=_dataset_pilot_select)
+
+    authorship_reconcile = style_dataset_sub.add_parser(
+        "authorship-reconcile",
+        help="Separate transport evidence from message authorship",
+    )
+    authorship_reconcile.add_argument("--reconciliation", required=True)
+    authorship_reconcile.add_argument("--pilot-selection", required=True)
+    authorship_reconcile.add_argument("--output", required=True)
+    authorship_reconcile.add_argument("--max-review-entries", type=int, default=20)
+    authorship_reconcile.set_defaults(func=_dataset_authorship_reconcile)
+
+    authorship_apply = style_dataset_sub.add_parser(
+        "authorship-apply-conservative",
+        help="Build a clean pilot by excluding unresolved authorship",
+    )
+    authorship_apply.add_argument("--authorship", required=True)
+    authorship_apply.add_argument("--decisions", required=True)
+    authorship_apply.add_argument("--pilot-selection", required=True)
+    authorship_apply.add_argument("--output", required=True)
+    authorship_apply.add_argument(
+        "--exclude-recommended-suspicious",
+        action="store_true",
+    )
+    authorship_apply.add_argument("--exclude-unresolved", action="store_true")
+    authorship_apply.add_argument("--min-examples", type=int, default=50)
+    authorship_apply.set_defaults(func=_dataset_authorship_apply)
+
+    confirm_clean = style_dataset_sub.add_parser(
+        "telegram-confirm-clean-pilot",
+        help="Confirm an authorship-verified clean private pilot",
+    )
+    confirm_clean.add_argument("--preview", required=True)
+    confirm_clean.add_argument("--reconciliation", required=True)
+    confirm_clean.add_argument("--authorship", required=True)
+    confirm_clean.add_argument("--clean-pilot", required=True)
+    confirm_clean.add_argument("--authorship-decisions", required=True)
+    confirm_clean.add_argument("--fingerprint", required=True)
+    confirm_clean.add_argument("--consent-confirmed", action="store_true")
+    confirm_clean.add_argument("--dataset", default="datasets/private-style")
+    confirm_clean.set_defaults(func=_dataset_telegram_confirm_clean)
 
     style_profile = style_dataset_sub.add_parser(
         "style-profile-build",
@@ -895,6 +940,44 @@ def _dataset_pilot_select(args: argparse.Namespace) -> dict[str, Any]:
         authoritative_only=bool(args.authoritative_only),
         min_examples=args.min_examples,
         max_examples=args.max_examples,
+    )
+
+
+def _dataset_authorship_reconcile(args: argparse.Namespace) -> dict[str, Any]:
+    return reconcile_authorship(
+        reconciliation=Path(args.reconciliation),
+        pilot_selection=Path(args.pilot_selection),
+        output=Path(args.output),
+        max_review_entries=args.max_review_entries,
+    )
+
+
+def _dataset_authorship_apply(args: argparse.Namespace) -> dict[str, Any]:
+    return apply_conservative_authorship(
+        authorship=Path(args.authorship),
+        decisions=Path(args.decisions),
+        pilot_selection=Path(args.pilot_selection),
+        output=Path(args.output),
+        exclude_recommended_suspicious=bool(
+            args.exclude_recommended_suspicious
+        ),
+        exclude_unresolved=bool(args.exclude_unresolved),
+        min_examples=args.min_examples,
+    )
+
+
+def _dataset_telegram_confirm_clean(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return confirm_clean_pilot(
+        preview=Path(args.preview),
+        reconciliation=Path(args.reconciliation),
+        authorship=Path(args.authorship),
+        clean_pilot=Path(args.clean_pilot),
+        authorship_decisions=Path(args.authorship_decisions),
+        fingerprint=args.fingerprint,
+        consent_confirmed=bool(args.consent_confirmed),
+        dataset_root=Path(args.dataset),
     )
 
 
