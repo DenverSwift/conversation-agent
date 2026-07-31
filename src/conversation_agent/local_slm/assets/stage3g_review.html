@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stage 3G Review</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">CA</span>
+      <span>CONVERSATION AGENT</span>
+    </div>
+    <nav aria-label="Фильтры">
+      <button class="nav-item active" data-track="all">
+        <span class="nav-icon">▦</span><span>Все пары</span>
+        <strong id="all-count">0</strong>
+      </button>
+      <button class="nav-item" data-track="controlled">
+        <span class="nav-icon">◇</span><span>Controlled</span>
+        <strong id="controlled-count">0</strong>
+      </button>
+      <button class="nav-item" data-track="private-shadow">
+        <span class="nav-icon">◉</span><span>Private shadow</span>
+        <strong id="private-count">0</strong>
+      </button>
+    </nav>
+    <div class="sidebar-section">
+      <span class="section-label">СТАТУС</span>
+      <div class="status-line"><span class="status-dot"></span><span>Blind review</span></div>
+      <div class="status-line"><span class="lock">●</span><span>Localhost</span></div>
+    </div>
+    <div class="sidebar-footer">
+      <span id="reviewer">reviewer</span>
+      <span>seed <b id="seed">42</b></span>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <span class="eyebrow">STAGE 3G</span>
+        <h1>Blind A/B Review</h1>
+      </div>
+      <div class="top-actions">
+        <button id="previous" class="icon-button" title="Предыдущая пара" aria-label="Предыдущая пара">←</button>
+        <button id="next" class="icon-button" title="Следующая пара" aria-label="Следующая пара">→</button>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="Прогресс">
+      <div class="metric"><span>ПРОВЕРЕНО</span><strong id="reviewed">0</strong></div>
+      <div class="metric"><span>ОСТАЛОСЬ</span><strong id="remaining">0</strong></div>
+      <div class="metric"><span>ВСЕГО</span><strong id="total">0</strong></div>
+      <div class="metric progress-metric">
+        <span>ПРОГРЕСС</span>
+        <strong id="percent">0%</strong>
+        <div class="progress-track"><i id="progress-bar"></i></div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <div class="pair-header">
+        <div>
+          <span id="track-badge" class="badge">CONTROLLED</span>
+          <span id="category" class="category">category</span>
+        </div>
+        <span id="pair-position" class="pair-position">0 / 0</span>
+      </div>
+
+      <section class="context-panel">
+        <div class="panel-title">
+          <span class="step">01</span>
+          <h2>Контекст</h2>
+        </div>
+        <div id="context" class="conversation"></div>
+      </section>
+
+      <section class="candidate-grid">
+        <article class="candidate" id="candidate-a">
+          <div class="candidate-head">
+            <span class="candidate-label">A</span>
+            <span>Кандидат A</span>
+          </div>
+          <div id="candidate-a-output" class="candidate-output"></div>
+        </article>
+        <article class="candidate" id="candidate-b">
+          <div class="candidate-head">
+            <span class="candidate-label">B</span>
+            <span>Кандидат B</span>
+          </div>
+          <div id="candidate-b-output" class="candidate-output"></div>
+        </article>
+      </section>
+
+      <section class="rating-panel">
+        <div class="panel-title">
+          <span class="step">02</span>
+          <h2>Оценка</h2>
+          <span id="save-status" class="save-status">Не оценено</span>
+        </div>
+        <div id="choices" class="choice-grid" role="group" aria-label="Оценка пары">
+          <button data-choice="a_much_better">A намного лучше</button>
+          <button data-choice="a_slightly_better">A немного лучше</button>
+          <button data-choice="tie">Одинаково</button>
+          <button data-choice="b_slightly_better">B немного лучше</button>
+          <button data-choice="b_much_better">B намного лучше</button>
+          <button data-choice="both_bad" class="danger-choice">Оба плохие</button>
+          <button data-choice="skip" class="quiet-choice">Пропустить</button>
+        </div>
+        <div class="tags-title">ПРОБЛЕМЫ <span>необязательно</span></div>
+        <div id="issue-tags" class="tag-grid"></div>
+      </section>
+
+      <section id="target-panel" class="target-panel hidden">
+        <div class="panel-title">
+          <span class="step">03</span>
+          <h2>Человеческий ответ</h2>
+        </div>
+        <button id="reveal-target" class="reveal-button">Показать после оценки</button>
+        <div id="target-output" class="target-output hidden"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

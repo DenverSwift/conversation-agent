@@ -73,6 +73,14 @@ from conversation_agent.local_slm.stage3f_style import (
     profile_audit,
     replay_evaluate,
 )
+from conversation_agent.local_slm.stage3g import (
+    Stage3GOptions,
+    generate_stage3g_report,
+    run_stage3g,
+)
+from conversation_agent.local_slm.stage3g_review_ui import (
+    run_stage3g_review_ui,
+)
 from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
 from conversation_agent.local_slm.stage25_report import generate_stage25_report
 from conversation_agent.local_slm.stage25_runner import (
@@ -552,6 +560,44 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     stage3a_report.add_argument("--run", required=True)
     stage3a_report.add_argument("--output", required=True)
     stage3a_report.set_defaults(func=_benchmark_stage3a_report)
+
+    stage3g = benchmark_sub.add_parser(
+        "stage3g-run",
+        help="Run neutral vs relationship-conditioned local renderer shadow A/B",
+    )
+    stage3g.add_argument("--private-dataset", required=True)
+    stage3g.add_argument("--agent-profile", required=True)
+    stage3g.add_argument("--relationship-profile", required=True)
+    stage3g.add_argument("--contracts-from", required=True)
+    stage3g.add_argument("--output", required=True)
+    stage3g.add_argument("--controlled-limit", type=int, default=20)
+    stage3g.add_argument("--private-limit", type=int, default=10)
+    stage3g.add_argument("--seed", type=int, default=42)
+    stage3g.add_argument("--gpu-required", action="store_true", default=True)
+    stage3g.add_argument("--no-openai", action="store_true", required=True)
+    stage3g.add_argument("--resume", action="store_true")
+    stage3g.add_argument("--retry-errors", action="store_true")
+    stage3g.set_defaults(func=_benchmark_stage3g_run)
+
+    stage3g_review = benchmark_sub.add_parser(
+        "stage3g-review-ui",
+        help="Open the Stage 3G blind A/B review dashboard",
+    )
+    stage3g_review.add_argument("--run", required=True)
+    stage3g_review.add_argument("--reviewer", required=True)
+    stage3g_review.add_argument("--seed", type=int, default=42)
+    stage3g_review.add_argument("--port", type=int, default=8766)
+    stage3g_review.add_argument("--no-open", action="store_true")
+    stage3g_review.set_defaults(func=_benchmark_stage3g_review_ui)
+
+    stage3g_report = benchmark_sub.add_parser(
+        "stage3g-report",
+        help="Generate Stage 3G automatic and blind-review reports",
+    )
+    stage3g_report.add_argument("--run", required=True)
+    stage3g_report.add_argument("--reviews", required=True)
+    stage3g_report.add_argument("--output", required=True)
+    stage3g_report.set_defaults(func=_benchmark_stage3g_report)
 
 
 def run_local_slm_command(args: argparse.Namespace) -> int:
@@ -1234,5 +1280,44 @@ def _benchmark_stage3a_run(args: argparse.Namespace) -> dict[str, Any]:
 def _benchmark_stage3a_report(args: argparse.Namespace) -> dict[str, Any]:
     return generate_stage3a_report(
         run_dir=Path(args.run),
+        output_dir=Path(args.output),
+    )
+
+
+def _benchmark_stage3g_run(args: argparse.Namespace) -> dict[str, Any]:
+    return asyncio.run(
+        run_stage3g(
+            Stage3GOptions(
+                private_dataset=Path(args.private_dataset),
+                agent_profile=Path(args.agent_profile),
+                relationship_profile=Path(args.relationship_profile),
+                contracts_from=Path(args.contracts_from),
+                output_dir=Path(args.output),
+                controlled_limit=args.controlled_limit,
+                private_limit=args.private_limit,
+                seed=args.seed,
+                gpu_required=bool(args.gpu_required),
+                no_openai=bool(args.no_openai),
+                resume=args.resume or args.retry_errors,
+                retry_errors=args.retry_errors,
+            )
+        )
+    )
+
+
+def _benchmark_stage3g_review_ui(args: argparse.Namespace) -> dict[str, Any]:
+    return run_stage3g_review_ui(
+        run_dir=Path(args.run),
+        reviewer=args.reviewer,
+        seed=args.seed,
+        port=args.port,
+        open_browser=not args.no_open,
+    )
+
+
+def _benchmark_stage3g_report(args: argparse.Namespace) -> dict[str, Any]:
+    return generate_stage3g_report(
+        run_dir=Path(args.run),
+        reviews_dir=Path(args.reviews),
         output_dir=Path(args.output),
     )
