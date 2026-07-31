@@ -11,6 +11,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.local_slm.authoritative_pilot import (
+    recommend_pii_actions,
+    resolve_profile_preview,
+    select_authoritative_pilot,
+)
 from conversation_agent.local_slm.batch_curation import (
     build_batch_review,
     build_curated_style_profiles,
@@ -19,8 +24,15 @@ from conversation_agent.local_slm.batch_curation import (
 from conversation_agent.local_slm.benchmark import run_benchmark
 from conversation_agent.local_slm.context import LocalContextBuilder
 from conversation_agent.local_slm.dataset import build_sft_dataset
-from conversation_agent.local_slm.models import DialoguePolicyInput, GenerationRequest, HybridResult
-from conversation_agent.local_slm.policy import RuleBasedDialoguePolicy, safe_policy_decision
+from conversation_agent.local_slm.models import (
+    DialoguePolicyInput,
+    GenerationRequest,
+    HybridResult,
+)
+from conversation_agent.local_slm.policy import (
+    RuleBasedDialoguePolicy,
+    safe_policy_decision,
+)
 from conversation_agent.local_slm.private_style_dataset import (
     add_style_examples,
     build_style_dataset,
@@ -83,18 +95,26 @@ from conversation_agent.local_slm.validator import OutputValidator
 
 
 def add_local_slm_parsers(subparsers: Any) -> None:
-    simulate = subparsers.add_parser("local-simulate", help="Run offline local SLM demo")
+    simulate = subparsers.add_parser(
+        "local-simulate", help="Run offline local SLM demo"
+    )
     simulate.add_argument("--contact-id", default="test-contact")
     simulate.add_argument("--agent-id", default="informal-manager")
     simulate.add_argument("--message", action="append", required=True)
-    simulate.add_argument("--fake", action="store_true", help="Use explicit fake provider")
+    simulate.add_argument(
+        "--fake", action="store_true", help="Use explicit fake provider"
+    )
     simulate.set_defaults(func=_simulate)
 
-    doctor = subparsers.add_parser("local-model-doctor", help="Check real local model endpoint")
+    doctor = subparsers.add_parser(
+        "local-model-doctor", help="Check real local model endpoint"
+    )
     doctor.add_argument("--profile")
     doctor.set_defaults(func=_doctor)
 
-    smoke = subparsers.add_parser("local-model-smoke", help="Run real local model smoke scenarios")
+    smoke = subparsers.add_parser(
+        "local-model-smoke", help="Run real local model smoke scenarios"
+    )
     smoke.add_argument("--output-dir", default=".runtime/local_slm/smoke")
     smoke.set_defaults(func=_smoke)
 
@@ -103,7 +123,9 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     dataset.add_argument("--output", required=True)
     dataset.set_defaults(func=_build_dataset)
 
-    train = subparsers.add_parser("local-train-dry-run", help="Plan LoRA training without GPU")
+    train = subparsers.add_parser(
+        "local-train-dry-run", help="Plan LoRA training without GPU"
+    )
     train.add_argument("--dataset", required=True)
     train.add_argument("--base-model", default="Qwen2.5-0.5B")
     train.add_argument("--output-dir", default=".runtime/models/adapters/dry-run")
@@ -239,13 +261,35 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     )
     confirm_curated.add_argument("--preview", required=True)
     confirm_curated.add_argument("--reconciliation", required=True)
-    confirm_curated.add_argument("--batch-decisions", required=True)
+    confirm_curated.add_argument("--batch-decisions")
+    confirm_curated.add_argument("--pilot-selection")
     confirm_curated.add_argument("--pii-decisions", required=True)
     confirm_curated.add_argument("--fingerprint", required=True)
     confirm_curated.add_argument("--consent-confirmed", action="store_true")
+    confirm_curated.add_argument("--authoritative-only", action="store_true")
     confirm_curated.add_argument("--max-examples", type=int, default=100)
     confirm_curated.add_argument("--dataset", default="datasets/private-style")
     confirm_curated.set_defaults(func=_dataset_telegram_confirm_curated)
+
+    pii_recommend = style_dataset_sub.add_parser(
+        "pii-recommend",
+        help="Recommend deterministic local actions for scoped PII findings",
+    )
+    pii_recommend.add_argument("--review", required=True)
+    pii_recommend.add_argument("--reconciliation", required=True)
+    pii_recommend.add_argument("--output", required=True)
+    pii_recommend.set_defaults(func=_dataset_pii_recommend)
+
+    pilot_select = style_dataset_sub.add_parser(
+        "pilot-select",
+        help="Select a diverse authoritative-human private pilot",
+    )
+    pilot_select.add_argument("--reconciliation", required=True)
+    pilot_select.add_argument("--authoritative-only", action="store_true")
+    pilot_select.add_argument("--min-examples", type=int, default=50)
+    pilot_select.add_argument("--max-examples", type=int, default=82)
+    pilot_select.add_argument("--output", required=True)
+    pilot_select.set_defaults(func=_dataset_pilot_select)
 
     style_profile = style_dataset_sub.add_parser(
         "style-profile-build",
@@ -254,6 +298,17 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     style_profile.add_argument("--dataset", required=True)
     style_profile.add_argument("--output", required=True)
     style_profile.set_defaults(func=_dataset_style_profile_build)
+
+    style = subparsers.add_parser(
+        "style",
+        help="Inspect adaptive style resolution without generation",
+    )
+    style_sub = style.add_subparsers(dest="style_command", required=True)
+    resolve_preview = style_sub.add_parser("resolve-preview")
+    resolve_preview.add_argument("--agent-profile", required=True)
+    resolve_preview.add_argument("--relationship-profile", required=True)
+    resolve_preview.add_argument("--limit", type=int, default=30)
+    resolve_preview.set_defaults(func=_style_resolve_preview)
 
     benchmark = subparsers.add_parser("benchmark", help="Run fake/local benchmark")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
@@ -441,7 +496,10 @@ def run_local_slm_command(args: argparse.Namespace) -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         if result.get("Ready") == "NO":
             return 1
-        if "validation_success_rate" in result and result["validation_success_rate"] < 1.0:
+        if (
+            "validation_success_rate" in result
+            and result["validation_success_rate"] < 1.0
+        ):
             return 1
     return 0
 
@@ -449,7 +507,9 @@ def run_local_slm_command(args: argparse.Namespace) -> int:
 def _simulate(args: argparse.Namespace) -> dict[str, Any]:
     config = LocalLLMConfig.from_env()
     policy = RuleBasedDialoguePolicy()
-    decision = safe_policy_decision(policy, DialoguePolicyInput(messages=tuple(args.message)))
+    decision = safe_policy_decision(
+        policy, DialoguePolicyInput(messages=tuple(args.message))
+    )
     context_builder = LocalContextBuilder()
     context = context_builder.build(
         agent_id=args.agent_id,
@@ -477,7 +537,9 @@ def _simulate(args: argparse.Namespace) -> dict[str, Any]:
             route=("local",),
         )
     if not result.validation.valid:
-        raise LocalModelError(f"local-simulate validation failed: {result.validation.errors}")
+        raise LocalModelError(
+            f"local-simulate validation failed: {result.validation.errors}"
+        )
     return {
         "contact_id": args.contact_id,
         "provider": result.selected.provider,
@@ -507,7 +569,9 @@ def _simulate(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def _make_provider(config: LocalLLMConfig, *, fake: bool) -> FakeLocalGenerationProvider | OpenAICompatibleLocalProvider:
+def _make_provider(
+    config: LocalLLMConfig, *, fake: bool
+) -> FakeLocalGenerationProvider | OpenAICompatibleLocalProvider:
     if fake:
         return FakeLocalGenerationProvider()
     return OpenAICompatibleLocalProvider.from_config(config)
@@ -523,9 +587,7 @@ async def _doctor_ruadapt() -> dict[str, Any]:
     from conversation_agent.local_slm.renderer_registry import get_renderer_profile
 
     profile_name = json.loads(
-        Path(".runtime/local_slm/ruadapt-model.json").read_text(
-            encoding="utf-8-sig"
-        )
+        Path(".runtime/local_slm/ruadapt-model.json").read_text(encoding="utf-8-sig")
     )["profile"]
     profile = get_renderer_profile(profile_name)
     status = json.loads(
@@ -595,12 +657,16 @@ async def _doctor_async(config: LocalLLMConfig) -> dict[str, Any]:
         if config.model not in models and models:
             output["Reason"] = f"model mismatch: expected {config.model}, got {models}"
             return output
-        request = _request_for_messages(("привет", "нужен бот для заявок"), "doctor-agent")
+        request = _request_for_messages(
+            ("привет", "нужен бот для заявок"), "doctor-agent"
+        )
         result = await provider.generate(request)
         validation = OutputValidator().validate(result)
         output["Chat completions"] = "OK"
         output["Structured output"] = "OK" if validation.valid else "NO"
-        output["Non-thinking"] = "OK" if "reasoning_output" not in validation.errors else "NO"
+        output["Non-thinking"] = (
+            "OK" if "reasoning_output" not in validation.errors else "NO"
+        )
         output["Parsed action"] = result.action
         output["Generated messages"] = list(result.messages)
         output["Latency ms"] = result.latency_ms
@@ -634,7 +700,10 @@ async def _smoke_async(config: LocalLLMConfig) -> dict[str, Any]:
         ("thanks_ack", ("спасибо",)),
         ("handoff", ("скинь договор",)),
         ("informal_reaction", ("😂",)),
-        ("formal_service_ru", ("Здравствуйте. Подскажите, вы занимаетесь разработкой Telegram-ботов?",)),
+        (
+            "formal_service_ru",
+            ("Здравствуйте. Подскажите, вы занимаетесь разработкой Telegram-ботов?",),
+        ),
     ]
     validator = OutputValidator()
     rows: list[dict[str, Any]] = []
@@ -649,7 +718,9 @@ async def _smoke_async(config: LocalLLMConfig) -> dict[str, Any]:
                 "id": scenario_id,
                 "input": list(messages),
                 "raw_output": result.raw_output,
-                "normalized_output": validation.normalized.to_dict() if validation.normalized else None,
+                "normalized_output": validation.normalized.to_dict()
+                if validation.normalized
+                else None,
                 "validation": validation.to_dict(),
                 "latency_ms": result.latency_ms,
                 "ttft_ms": result.ttft_ms,
@@ -665,7 +736,9 @@ async def _smoke_async(config: LocalLLMConfig) -> dict[str, Any]:
     }
 
 
-def _request_for_messages(messages: tuple[str, ...], agent_id: str) -> GenerationRequest:
+def _request_for_messages(
+    messages: tuple[str, ...], agent_id: str
+) -> GenerationRequest:
     policy = RuleBasedDialoguePolicy()
     decision = safe_policy_decision(policy, DialoguePolicyInput(messages=messages))
     context = LocalContextBuilder().build(
@@ -682,7 +755,9 @@ def _config_fingerprint(config: LocalLLMConfig) -> str:
 
 
 def _build_dataset(args: argparse.Namespace) -> dict[str, Any]:
-    return build_sft_dataset(source_path=Path(args.source), output_path=Path(args.output)).to_dict()
+    return build_sft_dataset(
+        source_path=Path(args.source), output_path=Path(args.output)
+    ).to_dict()
 
 
 def _dataset_style_init(args: argparse.Namespace) -> dict[str, Any]:
@@ -794,12 +869,32 @@ def _dataset_telegram_confirm_curated(
     return confirm_curated_dataset(
         preview=Path(args.preview),
         reconciliation=Path(args.reconciliation),
-        batch_decisions=Path(args.batch_decisions),
+        batch_decisions=(Path(args.batch_decisions) if args.batch_decisions else None),
+        pilot_selection=(Path(args.pilot_selection) if args.pilot_selection else None),
         pii_decisions=Path(args.pii_decisions),
         fingerprint=args.fingerprint,
         consent_confirmed=bool(args.consent_confirmed),
+        authoritative_only=bool(args.authoritative_only),
         max_examples=args.max_examples,
         dataset_root=Path(args.dataset),
+    )
+
+
+def _dataset_pii_recommend(args: argparse.Namespace) -> dict[str, Any]:
+    return recommend_pii_actions(
+        review=Path(args.review),
+        reconciliation=Path(args.reconciliation),
+        output=Path(args.output),
+    )
+
+
+def _dataset_pilot_select(args: argparse.Namespace) -> dict[str, Any]:
+    return select_authoritative_pilot(
+        reconciliation=Path(args.reconciliation),
+        output=Path(args.output),
+        authoritative_only=bool(args.authoritative_only),
+        min_examples=args.min_examples,
+        max_examples=args.max_examples,
     )
 
 
@@ -807,6 +902,14 @@ def _dataset_style_profile_build(args: argparse.Namespace) -> dict[str, Any]:
     return build_curated_style_profiles(
         dataset=Path(args.dataset),
         output=Path(args.output),
+    )
+
+
+def _style_resolve_preview(args: argparse.Namespace) -> dict[str, Any]:
+    return resolve_profile_preview(
+        agent_profile=Path(args.agent_profile),
+        relationship_profile=Path(args.relationship_profile),
+        limit=args.limit,
     )
 
 
@@ -820,7 +923,9 @@ def _train_dry_run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _benchmark_run(args: argparse.Namespace) -> dict[str, Any]:
-    providers = tuple(item.strip() for item in str(args.providers).split(",") if item.strip())
+    providers = tuple(
+        item.strip() for item in str(args.providers).split(",") if item.strip()
+    )
     return asyncio.run(
         run_benchmark(
             dataset=Path(args.dataset),
@@ -832,9 +937,7 @@ def _benchmark_run(args: argparse.Namespace) -> dict[str, Any]:
 
 def _benchmark_stage2_run(args: argparse.Namespace) -> dict[str, Any]:
     providers = [
-        item.strip()
-        for item in str(args.providers).split(",")
-        if item.strip()
+        item.strip() for item in str(args.providers).split(",") if item.strip()
     ]
     if args.no_openai:
         providers = [item for item in providers if item != "openai_gpt4o_mini"]
@@ -911,15 +1014,14 @@ def _benchmark_diagnostic_pack(args: argparse.Namespace) -> dict[str, Any]:
 
 def _benchmark_stage25_run(args: argparse.Namespace) -> dict[str, Any]:
     pipelines = [
-        item.strip()
-        for item in str(args.pipelines).split(",")
-        if item.strip()
+        item.strip() for item in str(args.pipelines).split(",") if item.strip()
     ]
     if args.no_openai:
         pipelines = [
             item
             for item in pipelines
-            if item not in {
+            if item
+            not in {
                 "openai_direct",
                 "gpt_policy_openai_renderer",
                 "gpt_policy_local_renderer",

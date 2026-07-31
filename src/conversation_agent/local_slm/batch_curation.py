@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from conversation_agent.local_slm.authoritative_pilot import selection_fingerprint
 from conversation_agent.local_slm.stage2_dataset import (
     registered_benchmark_fingerprints,
     stable_fingerprint,
@@ -80,7 +81,9 @@ def build_batch_review(
                 "ai_matches": 0,
                 "human_matches": 0,
                 "heuristic_flags": dict(sorted(flags.items())),
-                "pii_count": sum(len(pii_by_episode.get(item, [])) for item in episode_ids),
+                "pii_count": sum(
+                    len(pii_by_episode.get(item, [])) for item in episode_ids
+                ),
                 "review_priority": max(
                     (
                         int(item.get("stage3c", {}).get("review_priority", 0))
@@ -262,26 +265,41 @@ def confirm_curated_dataset(
     *,
     preview: Path,
     reconciliation: Path,
-    batch_decisions: Path,
+    batch_decisions: Path | None,
+    pilot_selection: Path | None = None,
     pii_decisions: Path,
     fingerprint: str,
     consent_confirmed: bool,
+    authoritative_only: bool = False,
     max_examples: int,
     dataset_root: Path = DEFAULT_DATASET_ROOT,
 ) -> dict[str, Any]:
     if not consent_confirmed:
         raise TelegramCurationError("--consent-confirmed is required")
-    if not 50 <= max_examples <= 100:
-        raise TelegramCurationError("--max-examples must be between 50 and 100")
-    recorded = _validated_reconciliation_fingerprint(reconciliation)
-    if fingerprint != recorded:
-        raise TelegramCurationError("reconciliation fingerprint does not match")
+    maximum = 82 if authoritative_only else 100
+    if not 50 <= max_examples <= maximum:
+        raise TelegramCurationError(f"--max-examples must be between 50 and {maximum}")
+    reconciliation_recorded = _validated_reconciliation_fingerprint(reconciliation)
+    if authoritative_only:
+        if pilot_selection is None:
+            raise TelegramCurationError(
+                "--pilot-selection is required with --authoritative-only"
+            )
+        recorded = selection_fingerprint(pilot_selection)
+        if fingerprint != recorded:
+            raise TelegramCurationError("pilot selection fingerprint does not match")
+    else:
+        recorded = reconciliation_recorded
+        if fingerprint != recorded:
+            raise TelegramCurationError("reconciliation fingerprint does not match")
+        if batch_decisions is None:
+            raise TelegramCurationError("--batch-decisions is required")
     source_preview = json.loads(
         (reconciliation / "manifest.json").read_text(encoding="utf-8-sig")
     ).get("source_preview_fingerprint")
-    current_preview = (preview / "preview-fingerprint.txt").read_text(
-        encoding="utf-8-sig"
-    ).strip()
+    current_preview = (
+        (preview / "preview-fingerprint.txt").read_text(encoding="utf-8-sig").strip()
+    )
     if source_preview != current_preview:
         raise TelegramCurationError("Stage 3B preview does not match reconciliation")
     if source_preview in registered_benchmark_fingerprints():
@@ -290,41 +308,69 @@ def confirm_curated_dataset(
         str(item["example_id"]): item
         for item in _read_jsonl(reconciliation / "episodes.reconciled.jsonl")
     }
-    summary = json.loads(
-        (batch_decisions.parent / "provenance-summary.json").read_text(
-            encoding="utf-8-sig"
-        )
-    )
-    batch_map = {
-        str(item["batch_id"]): [str(value) for value in item.get("episode_ids", [])]
-        for item in summary.get("batches", [])
-    }
     approved_unknown: set[str] = set()
-    for row in _read_csv(batch_decisions):
-        decision = str(row.get("decision", "")).strip()
-        if decision and decision not in BATCH_DECISIONS:
-            raise TelegramCurationError(f"invalid batch decision: {decision}")
-        if decision == "include_human":
-            if not _csv_true(row.get("consent_ok")) or not _csv_true(
-                row.get("privacy_ok")
-            ):
-                raise TelegramCurationError(
-                    "include_human batch requires consent_ok and privacy_ok"
-                )
-            approved_unknown.update(batch_map.get(str(row.get("batch_id")), []))
+    if not authoritative_only:
+        assert batch_decisions is not None
+        summary = json.loads(
+            (batch_decisions.parent / "provenance-summary.json").read_text(
+                encoding="utf-8-sig"
+            )
+        )
+        batch_map = {
+            str(item["batch_id"]): [str(value) for value in item.get("episode_ids", [])]
+            for item in summary.get("batches", [])
+        }
+        for row in _read_csv(batch_decisions):
+            decision = str(row.get("decision", "")).strip()
+            if decision and decision not in BATCH_DECISIONS:
+                raise TelegramCurationError(f"invalid batch decision: {decision}")
+            if decision == "include_human":
+                if not _csv_true(row.get("consent_ok")) or not _csv_true(
+                    row.get("privacy_ok")
+                ):
+                    raise TelegramCurationError(
+                        "include_human batch requires consent_ok and privacy_ok"
+                    )
+                approved_unknown.update(batch_map.get(str(row.get("batch_id")), []))
     authoritative = {
         example_id
         for example_id, episode in episodes.items()
         if episode.get("stage3c", {}).get("classification") in AUTHORITATIVE_HUMAN
+        and episode.get("stage3c", {}).get("authoritative") is True
     }
-    eligible_ids = authoritative | approved_unknown
-    eligible = [
-        item
-        for example_id, item in episodes.items()
-        if example_id in eligible_ids
-        and item.get("stage3c", {}).get("classification")
-        not in {"ai_generated", "conflicting_evidence"}
-    ]
+    if authoritative_only:
+        assert pilot_selection is not None
+        selected_rows = _read_jsonl(pilot_selection / "selected.preview.jsonl")
+        if any(
+            str(item.get("source_reconciliation_fingerprint", ""))
+            != reconciliation_recorded
+            for item in selected_rows
+        ):
+            raise TelegramCurationError("pilot selection does not match reconciliation")
+        requested_ids = [str(item["example_id"]) for item in selected_rows]
+        if len(requested_ids) != len(set(requested_ids)):
+            raise TelegramCurationError("pilot selection contains duplicate examples")
+        unknown_ids = [item for item in requested_ids if item not in episodes]
+        if unknown_ids:
+            raise TelegramCurationError("pilot selection contains unknown examples")
+        eligible = [
+            episodes[example_id]
+            for example_id in requested_ids
+            if example_id in authoritative
+        ]
+        if len(eligible) != len(requested_ids):
+            raise TelegramCurationError(
+                "pilot selection contains non-authoritative examples"
+            )
+    else:
+        eligible_ids = authoritative | approved_unknown
+        eligible = [
+            item
+            for example_id, item in episodes.items()
+            if example_id in eligible_ids
+            and item.get("stage3c", {}).get("classification")
+            not in {"ai_generated", "conflicting_evidence"}
+        ]
     if not eligible:
         raise TelegramCurationError("no human examples are explicitly eligible")
     pii_rows = _read_csv(pii_decisions)
@@ -340,15 +386,34 @@ def confirm_curated_dataset(
         if action:
             approved_pii[str(row.get("record_id"))] = action
     eligible_ids = {str(item["example_id"]) for item in eligible}
-    unresolved = [
-        record_id
+    unresolved_ids = {
+        str(episode_id)
         for record_id, item in pii_record_map.items()
-        if eligible_ids.intersection(str(value) for value in item.get("episode_ids", []))
-        and record_id not in approved_pii
-    ]
-    if unresolved:
+        if record_id not in approved_pii
+        for episode_id in item.get("episode_ids", [])
+        if str(episode_id) in eligible_ids
+    }
+    if unresolved_ids and not authoritative_only:
         raise TelegramCurationError("unresolved PII blocks curated confirmation")
-    selected = select_review_sample(eligible, limit=max_examples)
+    eligible = [
+        item for item in eligible if str(item["example_id"]) not in unresolved_ids
+    ]
+    excluded_by_action = {
+        str(episode_id)
+        for record_id, action in approved_pii.items()
+        if action == "exclude"
+        for episode_id in pii_record_map.get(record_id, {}).get("episode_ids", [])
+    }
+    eligible = [
+        item for item in eligible if str(item["example_id"]) not in excluded_by_action
+    ]
+    if not eligible:
+        raise TelegramCurationError("no human examples remain after PII review")
+    selected = (
+        eligible[:max_examples]
+        if authoritative_only
+        else select_review_sample(eligible, limit=max_examples)
+    )
     destination = dataset_root / "raw" / f"curated-{fingerprint[:12]}"
     if destination.exists():
         raise TelegramCurationError("curated destination already exists")
@@ -357,6 +422,12 @@ def confirm_curated_dataset(
         _curated_training_payload(
             item,
             user_batch_approved=str(item["example_id"]) in approved_unknown,
+            pii_transformations=_episode_pii_transformations(
+                str(item["example_id"]),
+                pii_record_map,
+                approved_pii,
+            ),
+            authoritative_only=authoritative_only,
         )
         for item in selected
     ]
@@ -365,7 +436,8 @@ def confirm_curated_dataset(
     manifest = {
         "schema_version": 1,
         "created_at": datetime.now(UTC).isoformat(),
-        "source_reconciliation_fingerprint": fingerprint,
+        "source_reconciliation_fingerprint": reconciliation_recorded,
+        "pilot_selection_fingerprint": (fingerprint if authoritative_only else None),
         "dataset_fingerprint": dataset_fingerprint,
         "examples": len(payloads),
         "max_examples": max_examples,
@@ -373,6 +445,8 @@ def confirm_curated_dataset(
         "benchmark_data_allowed": False,
         "contact_identifiers_included": False,
         "training_performed": False,
+        "authoritative_only": authoritative_only,
+        "unresolved_pii_examples_skipped": len(unresolved_ids),
     }
     _write_json(destination / "manifest.json", manifest)
     return {
@@ -381,6 +455,7 @@ def confirm_curated_dataset(
         "examples": len(payloads),
         "dataset_fingerprint": dataset_fingerprint,
         "training_performed": False,
+        "unresolved_pii_examples_skipped": len(unresolved_ids),
     }
 
 
@@ -390,17 +465,14 @@ def build_curated_style_profiles(
     output: Path,
 ) -> dict[str, Any]:
     rows = _load_dataset_rows(dataset)
-    allowed_sources = {
-        "human_manual",
-        "human_fix",
-        "imported_human_verified",
-    }
     episodes: list[dict[str, Any]] = []
     for row in rows:
         source_type = str(row.get("source_type", ""))
         provenance = row.get("provenance", {})
         origin_class = str(provenance.get("classification", ""))
-        if source_type not in allowed_sources:
+        if source_type != "imported_human_verified":
+            continue
+        if provenance.get("verified") is not True:
             continue
         if origin_class not in {
             "human_confirmed",
@@ -491,6 +563,8 @@ def _curated_training_payload(
     episode: dict[str, Any],
     *,
     user_batch_approved: bool,
+    pii_transformations: list[dict[str, str]] | None = None,
+    authoritative_only: bool = False,
 ) -> dict[str, Any]:
     context = [
         {
@@ -503,9 +577,7 @@ def _curated_training_payload(
     ]
     target = list(episode.get("human_target", {}).get("messages", []))
     original = str(episode.get("stage3c", {}).get("classification", ""))
-    classification = (
-        "user_approved_unknown_batch" if user_batch_approved else original
-    )
+    classification = "user_approved_unknown_batch" if user_batch_approved else original
     return {
         "example_id": episode["example_id"],
         "agent_id": episode.get("agent_id", "private-agent"),
@@ -523,9 +595,7 @@ def _curated_training_payload(
                 "source_type": "imported_human_verified",
                 "origin": "human",
                 "bubbles": target,
-                "contact_alias": episode.get(
-                    "contact_alias", "contact_private_001"
-                ),
+                "contact_alias": episode.get("contact_alias", "contact_private_001"),
             }
         ],
         "provenance": {
@@ -534,6 +604,7 @@ def _curated_training_payload(
             "verified": True,
             "purpose": "private_style",
             "source": "stage3c_curated_telegram_import",
+            "authoritative": authoritative_only or original in AUTHORITATIVE_HUMAN,
             "raw_identifiers_included": False,
             "user_batch_approved": user_batch_approved,
         },
@@ -548,7 +619,25 @@ def _curated_training_payload(
         ],
         "previous_candidate": [],
         "pii_flags": [],
+        "pii_transformations": pii_transformations or [],
     }
+
+
+def _episode_pii_transformations(
+    example_id: str,
+    pii_records: dict[str, dict[str, Any]],
+    approved_pii: dict[str, str],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "record_id": record_id,
+            "pii_type": str(record.get("pii_type", "")),
+            "action": approved_pii[record_id],
+        }
+        for record_id, record in pii_records.items()
+        if example_id in {str(value) for value in record.get("episode_ids", [])}
+        and record_id in approved_pii
+    ]
 
 
 def _write_review_markdown(
@@ -592,9 +681,7 @@ def _write_episode_markdown(
 ) -> None:
     lines = [f"# {title}", ""]
     for episode in episodes:
-        classification = episode.get("stage3c", {}).get(
-            "classification", "unknown"
-        )
+        classification = episode.get("stage3c", {}).get("classification", "unknown")
         lines.extend(
             (
                 f"## {episode['example_id']}",
@@ -605,7 +692,9 @@ def _write_episode_markdown(
                 "",
             )
         )
-        lines.extend(f"> {item}" for item in episode.get("incoming", {}).get("messages", []))
+        lines.extend(
+            f"> {item}" for item in episode.get("incoming", {}).get("messages", [])
+        )
         lines.extend(("", "**OWNER (candidate)**", ""))
         lines.extend(
             f"- {item}" for item in episode.get("human_target", {}).get("messages", [])

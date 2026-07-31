@@ -48,7 +48,13 @@ BATCH_DECISIONS = frozenset(
     }
 )
 PII_ACTIONS = frozenset(
-    {"redact", "replace_with_alias", "exclude", "keep_with_explicit_approval"}
+    {
+        "redact",
+        "replace_with_alias",
+        "exclude",
+        "keep",
+        "keep_with_explicit_approval",
+    }
 )
 RECONCILIATION_FILES = (
     "manifest.json",
