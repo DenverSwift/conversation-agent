@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private Telegram human example preview episode",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "example_id",
+    "import_id",
+    "agent_id",
+    "contact_alias",
+    "relationship_type",
+    "context_turns",
+    "incoming",
+    "human_target",
+    "source_type",
+    "semantic_plan",
+    "semantic_enrichment_status",
+    "provenance",
+    "privacy",
+    "quality_flags"
+  ],
+  "properties": {
+    "example_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "import_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contact_alias": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relationship_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context_turns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/turn"
+      }
+    },
+    "incoming": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/turn"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "contact"
+            }
+          }
+        }
+      ]
+    },
+    "human_target": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/turn"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "human"
+            }
+          }
+        }
+      ]
+    },
+    "source_type": {
+      "const": "imported_human_candidate"
+    },
+    "semantic_plan": {
+      "type": "null"
+    },
+    "semantic_enrichment_status": {
+      "const": "pending"
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "telegram",
+        "verified",
+        "classification",
+        "message_ids",
+        "origin_checks"
+      ]
+    },
+    "privacy": {
+      "type": "object",
+      "required": [
+        "pii_detected",
+        "redactions",
+        "review_required"
+      ]
+    },
+    "quality_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "turn": {
+      "type": "object",
+      "required": [
+        "role",
+        "messages",
+        "timestamps",
+        "inter_bubble_delays_seconds",
+        "media_types"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "human",
+            "contact"
+          ]
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timestamps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "inter_bubble_delays_seconds": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "media_types": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
