@@ -69,6 +69,10 @@ from conversation_agent.local_slm.stage3a import (
     generate_stage3a_report,
     run_stage3a,
 )
+from conversation_agent.local_slm.stage3f_style import (
+    profile_audit,
+    replay_evaluate,
+)
 from conversation_agent.local_slm.stage25_diagnostics import generate_diagnostic_pack
 from conversation_agent.local_slm.stage25_report import generate_stage25_report
 from conversation_agent.local_slm.stage25_runner import (
@@ -354,6 +358,24 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     resolve_preview.add_argument("--relationship-profile", required=True)
     resolve_preview.add_argument("--limit", type=int, default=30)
     resolve_preview.set_defaults(func=_style_resolve_preview)
+    profile_audit_parser = style_sub.add_parser(
+        "profile-audit",
+        help="Audit adaptive profiles against a verified dataset without generation",
+    )
+    profile_audit_parser.add_argument("--agent-profile", required=True)
+    profile_audit_parser.add_argument("--relationship-profile", required=True)
+    profile_audit_parser.add_argument("--dataset", required=True)
+    profile_audit_parser.add_argument("--output", required=True)
+    profile_audit_parser.set_defaults(func=_style_profile_audit)
+    replay = style_sub.add_parser(
+        "replay-evaluate",
+        help="Evaluate profile features with episode-level offline replay",
+    )
+    replay.add_argument("--dataset", required=True)
+    replay.add_argument("--output", required=True)
+    replay.add_argument("--folds", type=int, default=5)
+    replay.add_argument("--seed", type=int, default=42)
+    replay.set_defaults(func=_style_replay_evaluate)
 
     benchmark = subparsers.add_parser("benchmark", help="Run fake/local benchmark")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
@@ -993,6 +1015,24 @@ def _style_resolve_preview(args: argparse.Namespace) -> dict[str, Any]:
         agent_profile=Path(args.agent_profile),
         relationship_profile=Path(args.relationship_profile),
         limit=args.limit,
+    )
+
+
+def _style_profile_audit(args: argparse.Namespace) -> dict[str, Any]:
+    return profile_audit(
+        agent_profile=Path(args.agent_profile),
+        relationship_profile=Path(args.relationship_profile),
+        dataset=Path(args.dataset),
+        output=Path(args.output),
+    )
+
+
+def _style_replay_evaluate(args: argparse.Namespace) -> dict[str, Any]:
+    return replay_evaluate(
+        dataset=Path(args.dataset),
+        output=Path(args.output),
+        folds=args.folds,
+        seed=args.seed,
     )
 
 
