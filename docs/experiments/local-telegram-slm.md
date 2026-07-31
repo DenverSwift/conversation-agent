@@ -917,3 +917,57 @@ episodes cannot block confirmation. No PII transformation is applied to
 excluded records. Stage 3E reconciliation and cleanup do not call OpenAI,
 local models, embeddings, profile builders, or training, and do not change
 the production `openai_only` default.
+
+## Stage 3F - Profile Audit And Offline Replay
+
+Stage 3F replaces the ambiguous v1 casing fields with schema v2 categories:
+`lowercase`, `normal_sentence_case`, `all_caps`, `mixed_case`, and `uncased`.
+The v1 reader migrates first-letter-uppercase evidence to normal sentence
+case and records the fields that cannot be recovered without ambiguity.
+
+Incoming context features are derived from contact turns, never from the
+held-out owner target. Short and long incoming thresholds are configurable
+and stored with the profile. Typo frequency is unsupported and `null` unless
+authoritative labels or a reliable detector exist. Missing timing remains
+unavailable instead of becoming a zero-second interval.
+
+Profiles now expose separate global-agent and relationship confidence,
+per-feature confidence, evidence diversity, calibration reasons, and feature
+scope. A single relationship limits global confidence without reducing
+well-supported relationship confidence. Lexical, greeting, and limited
+profanity evidence remains relationship-specific and is not a generation
+rule. `fixed_rules` stays empty.
+
+An aggregate-only audit can be created without generation:
+
+```powershell
+python -m conversation_agent style profile-audit `
+  --agent-profile <private-agent-profile> `
+  --relationship-profile <private-relationship-profile> `
+  --dataset <confirmed-private-dataset> `
+  --output <private-audit-output>
+```
+
+The audit reports feature coverage, casing, contact context, timing
+availability, limited lexical-detector coverage, confidence calibration, and
+schema differences. It does not write raw private messages or lexical values
+to Git documentation.
+
+Offline replay uses episode-level folds, so bubbles from one episode cannot
+cross train and evaluation splits. Each fold builds profiles from train
+episodes, resolves from held-out incoming context, and reads the human target
+only after resolution to compute descriptive feature metrics:
+
+```powershell
+python -m conversation_agent style replay-evaluate `
+  --dataset <confirmed-private-dataset> `
+  --output <private-replay-output> `
+  --folds 5 `
+  --seed 42
+```
+
+The replay compares neutral fallback, agent only, relationship only, combined
+profiles, and combined profiles with an observed conversation snapshot.
+Temporal holdout uses explicit timestamps only; JSONL order is never treated
+as time. Neither command calls OpenAI, a local LLM, embeddings, or training,
+and the production default remains `openai_only`.
