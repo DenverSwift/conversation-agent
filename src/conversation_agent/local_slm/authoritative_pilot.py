@@ -18,6 +18,10 @@ from conversation_agent.local_slm.telegram_curation import (
 )
 from conversation_agent.local_slm.telegram_import import select_review_sample
 from conversation_agent.local_slm.telegram_privacy import scan_text
+from conversation_agent.local_slm.telegram_style_profile import (
+    migrate_style_profile,
+    resolve_style_plan,
+)
 
 
 def recommend_pii_actions(
@@ -279,30 +283,89 @@ def resolve_profile_preview(
     relationship_profile: Path,
     limit: int,
 ) -> dict[str, Any]:
-    agent = json.loads(agent_profile.read_text(encoding="utf-8-sig"))
-    relationship = json.loads(relationship_profile.read_text(encoding="utf-8-sig"))
+    agent = migrate_style_profile(
+        json.loads(agent_profile.read_text(encoding="utf-8-sig"))
+    )
+    relationship = migrate_style_profile(
+        json.loads(relationship_profile.read_text(encoding="utf-8-sig"))
+    )
     features = relationship.get("features") or agent.get("features", {})
-    casing = features.get("casing", {})
-    lower = float(casing.get("lowercase_frequency", 0.0))
-    upper = float(casing.get("uppercase_frequency", 0.0))
-    casing_mode = "lowercase" if lower > upper and lower >= 0.55 else "normal"
+    plan = resolve_style_plan(
+        agent_profile=agent,
+        relationship_profile=relationship,
+        mode="agent_relationship",
+    )
     length = features.get("response_length", {})
     bubbles = features.get("bubble_count", {})
     sample_count = int(relationship.get("sample_count", agent.get("sample_count", 0)))
-    confidence = float(relationship.get("confidence", agent.get("confidence", 0.0)))
+    agent_confidence = float(agent.get("global_agent_confidence", 0.0))
+    relationship_confidence = float(
+        relationship.get("relationship_confidence", relationship.get("confidence", 0.0))
+    )
+    timing = features.get("response_delay_seconds", {})
+    casing_confidence = float(
+        relationship.get("feature_confidences", {}).get("casing", 0.0)
+    )
+    reasons = [
+        (
+            "casing chosen from relationship distribution, "
+            f"confidence {casing_confidence:.2f}"
+        ),
+        (
+            "global evidence limited to one relationship"
+            if relationship.get("single_relationship_bias")
+            else "global evidence spans multiple relationships"
+        ),
+        (
+            "timing preference unavailable"
+            if timing.get("availability") == "unavailable"
+            else "timing preference measured from relative intervals"
+        ),
+        f"bubble median observed from {sample_count} verified episodes",
+        "profanity tendency kept relationship-specific",
+    ]
     return {
         "human_evidence": min(max(0, limit), sample_count),
+        "exact_evidence_source_count": min(max(0, limit), sample_count),
         "sample_count": sample_count,
-        "confidence": confidence,
-        "fallback": sample_count < 5,
-        "resolved_distributions": features,
-        "casing": casing_mode,
-        "casing_reason": "relationship human casing distribution",
+        "confidence": relationship_confidence,
+        "agent_confidence": agent_confidence,
+        "relationship_confidence": relationship_confidence,
+        "per_feature_confidence": relationship.get("feature_confidences", {}),
+        "selected_profile_scope": plan["selected_profile_scope"],
+        "single_relationship_bias": bool(
+            relationship.get("single_relationship_bias", False)
+        ),
+        "missing_feature_warnings": plan["missing_feature_warnings"],
+        "fallback": bool(plan["fallback"]),
+        "resolved_distributions": _safe_profile_features(features),
+        "casing": (
+            "normal"
+            if plan["casing"] == "normal_sentence_case"
+            else plan["casing"]
+        ),
+        "casing_category": plan["casing"],
+        "casing_reason": reasons[0],
         "length_reason": f"observed median={length.get('median')}",
         "bubble_reason": f"observed median={bubbles.get('median')}",
+        "reasons": reasons,
         "fixed_rules": [],
         "llm_called": False,
     }
+
+
+def _safe_profile_features(features: dict[str, Any]) -> dict[str, Any]:
+    output = json.loads(json.dumps(features))
+    for key in ("common_short_replies", "frequent_lexicon", "greeting_forms"):
+        value = output.get(key)
+        if isinstance(value, dict):
+            value.pop("values", None)
+            value["private_values_omitted"] = True
+    emoji = output.get("emoji")
+    if isinstance(emoji, dict) and isinstance(emoji.get("frequent"), dict):
+        emoji["frequent"].pop("values", None)
+        emoji["frequent"]["private_values_omitted"] = True
+    return output
 
 
 def _selection_payload(

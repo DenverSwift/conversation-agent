@@ -23,7 +23,11 @@ from conversation_agent.local_slm.telegram_curation import (
     reconciliation_fingerprint,
 )
 from conversation_agent.local_slm.telegram_import import select_review_sample
-from conversation_agent.local_slm.telegram_style_profile import build_style_profiles
+from conversation_agent.local_slm.telegram_style_profile import (
+    PROFILE_SCHEMA_VERSION,
+    build_style_profiles,
+    dataset_rows_to_profile_episodes,
+)
 
 DEFAULT_DATASET_ROOT = Path("datasets/private-style")
 
@@ -465,7 +469,7 @@ def build_curated_style_profiles(
     output: Path,
 ) -> dict[str, Any]:
     rows = _load_dataset_rows(dataset)
-    episodes: list[dict[str, Any]] = []
+    eligible_rows: list[dict[str, Any]] = []
     for row in rows:
         source_type = str(row.get("source_type", ""))
         provenance = row.get("provenance", {})
@@ -482,25 +486,8 @@ def build_curated_style_profiles(
             "human_fix",
         }:
             continue
-        target = [str(item) for item in row.get("human_target_bubbles", [])]
-        episodes.append(
-            {
-                "example_id": row.get("example_id"),
-                "human_target": {
-                    "messages": target,
-                    "timestamps": [str(row.get("timestamp", ""))] * len(target),
-                },
-                "incoming": {"messages": [], "timestamps": []},
-                "context_turns": row.get("conversation_context", []),
-                "provenance": {
-                    "classification": (
-                        "human_edited_ai"
-                        if origin_class == "human_edited_ai"
-                        else "human_confirmed"
-                    )
-                },
-            }
-        )
+        eligible_rows.append(row)
+    episodes = dataset_rows_to_profile_episodes(eligible_rows)
     agent, relationship = build_style_profiles(
         episodes,
         agent_id="private-agent",
@@ -511,11 +498,23 @@ def build_curated_style_profiles(
     _write_json(output / "agent-style-profile.json", agent)
     _write_json(output / "relationship-style-profile.json", relationship)
     manifest = {
-        "schema_version": 1,
+        "schema_version": PROFILE_SCHEMA_VERSION,
         "source_examples": len(rows),
         "eligible_human_examples": len(episodes),
+        "owner_message_bubbles": sum(
+            len(item.get("human_target", {}).get("messages", []))
+            for item in episodes
+        ),
+        "relationship_count": len(
+            {str(item.get("relationship_id", "")) for item in episodes}
+        ),
+        "contact_count": len(
+            {str(item.get("contact_alias", "")) for item in episodes}
+        ),
         "fixed_rules": [],
         "profiles_are_distributions": True,
+        "timing_values_invented": False,
+        "target_text_normalized": False,
         "dataset_fingerprint": stable_fingerprint(rows),
     }
     _write_json(output / "manifest.json", manifest)
