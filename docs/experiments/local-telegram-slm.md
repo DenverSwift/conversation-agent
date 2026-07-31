@@ -768,3 +768,70 @@ emoji, greeting, or punctuation rules.
 Stage 3C does not call OpenAI, Ruadapt, embeddings, or external classifiers. It
 does not train, create synthetic examples, download weights, alter Telegram,
 or change the production `openai_only` default.
+
+## Stage 3D - Authoritative Human Pilot
+
+Stage 3D finalizes the first private pilot using only Stage 3C episodes with
+authoritative human provenance. AI-generated, conflicting, and unknown
+episodes are excluded. Unknown batch approval is intentionally unnecessary in
+`--authoritative-only` mode and the Stage 3C review artifacts remain intact.
+
+PII recommendations are deterministic and local. They are review aids, never
+automatic approvals:
+
+```powershell
+python -m conversation_agent dataset pii-recommend `
+  --review .runtime/private-imports/telegram/<pilot-stage3c>/batch-review/pii-review.csv `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --output .runtime/private-imports/telegram/<pilot-stage3d>/pii-recommendations.csv
+```
+
+The first pilot excludes every episode with unresolved PII before selecting a
+deterministic, diverse 50-82 example sample. Original bubbles, casing,
+punctuation, typos, slang, and profanity are preserved:
+
+```powershell
+python -m conversation_agent dataset pilot-select `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --authoritative-only `
+  --min-examples 50 `
+  --max-examples 82 `
+  --output .runtime/private-imports/telegram/<pilot-stage3d>/pilot-selection
+```
+
+After the user explicitly fills the authoritative PII decisions, confirmation
+accepts the pilot fingerprint and does not require unknown batch decisions:
+
+```powershell
+python -m conversation_agent dataset telegram-confirm-curated `
+  --preview .runtime/private-imports/telegram/<pilot> `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --pilot-selection .runtime/private-imports/telegram/<pilot-stage3d>/pilot-selection `
+  --pii-decisions .runtime/private-imports/telegram/<pilot-stage3d>/final-pii-decisions.csv `
+  --fingerprint <pilot-selection-fingerprint> `
+  --consent-confirmed `
+  --authoritative-only `
+  --max-examples 82
+```
+
+An unresolved authoritative PII decision removes only affected examples.
+PII attached solely to excluded AI or skipped unknown data cannot block the
+authoritative pilot. Confirmation is never invoked by recommendation or
+selection commands.
+
+Confirmed examples use `imported_human_verified`, authoritative provenance,
+aliases, original target bubbles, pending semantic enrichment, and explicit
+PII transformation metadata. Profile building accepts only verified imported
+human examples. It emits separate descriptive agent and relationship
+distributions without fixed style rules. Resolution can be inspected without
+generation:
+
+```powershell
+python -m conversation_agent style resolve-preview `
+  --agent-profile <private-agent-profile> `
+  --relationship-profile <private-relationship-profile> `
+  --limit 30
+```
+
+Stage 3D does not call OpenAI or a local LLM, create a semantic plan, train,
+download weights, or change the production `openai_only` default.
