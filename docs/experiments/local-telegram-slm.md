@@ -835,3 +835,85 @@ python -m conversation_agent style resolve-preview `
 
 Stage 3D does not call OpenAI or a local LLM, create a semantic plan, train,
 download weights, or change the production `openai_only` default.
+
+## Stage 3E - Authorship Verification And Conservative Cleanup
+
+Stage 3E separates proof that a message was transported to Telegram from
+proof of who authored its text. A destination, hash, timestamp, or send-audit
+match may make transport authoritative, but it does not automatically make
+authorship human.
+
+Transport provenance uses these descriptive statuses:
+
+- `telegram_manual_path`;
+- `audited_send_path`;
+- `trainer_bot_path`;
+- `automated_send_path`;
+- `unknown_transport`.
+
+Authorship provenance is independently classified as `human_authored`,
+`ai_authored`, `human_edited_ai`, `unknown_authorship`, or
+`conflicting_authorship`. Exact generated-draft/message matches can prove AI
+authorship. Manual-input, takeover, Fix, and saved human-edit evidence can
+prove human authorship or a human-edited final version. A Telegram history
+export or send audit alone remains `unknown_authorship`.
+
+The reconciliation command reads the existing Stage 3C evidence plus the
+discovered local audit databases in read-only mode:
+
+```powershell
+python -m conversation_agent dataset authorship-reconcile `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --pilot-selection .runtime/private-imports/telegram/<pilot-stage3d>/pilot-selection `
+  --output .runtime/private-imports/telegram/<pilot-stage3e>/authorship
+```
+
+A deterministic detector prioritizes generic assistant wording, repeated
+clarification questions, safety templates, working-bot context, abrupt style
+changes, neighboring confirmed AI, and repeated response templates. These
+flags never create a human or AI authorship verdict. They only produce a
+bounded review queue and conservative exclusion recommendation.
+
+Empty `approved_action` cells are not approval. Supported user decisions are
+`include_human`, `exclude_ai`, and `exclude_uncertain`. A conservative preview
+excludes unresolved and suspicious records without rewriting any retained
+text. The Markdown review stays bounded to the highest-priority suspicious
+records, while the decisions CSV contains every pilot example so explicit
+approval can reach the 50-example minimum:
+
+```powershell
+python -m conversation_agent dataset authorship-apply-conservative `
+  --authorship .runtime/private-imports/telegram/<pilot-stage3e>/authorship `
+  --decisions .runtime/private-imports/telegram/<pilot-stage3e>/review/authorship-decisions.csv `
+  --pilot-selection .runtime/private-imports/telegram/<pilot-stage3d>/pilot-selection `
+  --output .runtime/private-imports/telegram/<pilot-stage3e>/clean-pilot `
+  --exclude-recommended-suspicious `
+  --exclude-unresolved
+```
+
+The preview does not invent synthetic replacements and does not normalize
+casing, punctuation, grammar, profanity, typos, or bubble boundaries. Fewer
+than 50 retained examples produces
+`INSUFFICIENT_AUTHORSHIP_VERIFIED_DATA`.
+
+Clean confirmation is a separate explicit command. It requires consent, an
+exact clean-pilot fingerprint, at least 50 records, resolved included review
+entries, human authorship evidence or explicit user approval, and zero
+unresolved PII inside the selected clean pilot:
+
+```powershell
+python -m conversation_agent dataset telegram-confirm-clean-pilot `
+  --preview .runtime/private-imports/telegram/<pilot> `
+  --reconciliation .runtime/private-imports/telegram/<pilot-stage3c>/reconciliation `
+  --authorship .runtime/private-imports/telegram/<pilot-stage3e>/authorship `
+  --clean-pilot .runtime/private-imports/telegram/<pilot-stage3e>/clean-pilot `
+  --authorship-decisions .runtime/private-imports/telegram/<pilot-stage3e>/review/authorship-decisions.csv `
+  --fingerprint <clean-pilot-fingerprint> `
+  --consent-confirmed
+```
+
+PII attached only to AI, unknown, excluded, or non-selected authoritative
+episodes cannot block confirmation. No PII transformation is applied to
+excluded records. Stage 3E reconciliation and cleanup do not call OpenAI,
+local models, embeddings, profile builders, or training, and do not change
+the production `openai_only` default.
