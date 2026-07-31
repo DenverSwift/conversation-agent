@@ -971,3 +971,54 @@ profiles, and combined profiles with an observed conversation snapshot.
 Temporal holdout uses explicit timestamps only; JSONL order is never treated
 as time. Neither command calls OpenAI, a local LLM, embeddings, or training,
 and the production default remains `openai_only`.
+
+## Stage 3G - Relationship-Conditioned Renderer Shadow A/B
+
+Stage 3G compares a neutral renderer with a relationship-conditioned renderer
+while keeping `SemanticPlan`, `SafetyConstraints`, model settings, and retry
+limits identical. The controlled track reuses the frozen Stage 2.6 contracts
+without rerunning GPT policy. The private shadow track uses episode-level
+leave-one-out profiles and reads each human target only after both candidates
+have been generated.
+
+Only aggregate style distributions enter the renderer prompt. Exact common
+replies, frequent lexicon, greetings, private names, raw profile evidence,
+Telegram metadata, and profanity examples are excluded by a hard prompt
+audit. Relationship-local slang is suppressed outside an eligible alias and
+for formal, sensitive, safety, or handoff turns.
+
+```powershell
+uv run python -m conversation_agent benchmark stage3g-run `
+  --private-dataset <confirmed-private-dataset> `
+  --agent-profile <private-agent-profile> `
+  --relationship-profile <private-relationship-profile> `
+  --contracts-from .runtime/benchmarks `
+  --output .runtime/benchmarks/stage3g-v1 `
+  --controlled-limit 20 `
+  --private-limit 10 `
+  --seed 42 `
+  --gpu-required `
+  --no-openai
+```
+
+The localhost review dashboard uses a deterministic blind mapping. It hides
+variant, style, model, latency, tokens, and private targets. Every button-only
+rating is saved immediately; a private target can be revealed only after the
+rating has been stored.
+
+```powershell
+uv run python -m conversation_agent benchmark stage3g-review-ui `
+  --run .runtime/benchmarks/stage3g-v1 `
+  --reviewer denver `
+  --seed 42
+```
+
+Reports keep the frozen-contract controlled results separate from exploratory
+private generation and do not claim LoRA readiness:
+
+```powershell
+uv run python -m conversation_agent benchmark stage3g-report `
+  --run .runtime/benchmarks/stage3g-v1 `
+  --reviews .runtime/benchmarks/stage3g-v1/reviews `
+  --output .runtime/benchmarks/stage3g-v1/report
+```
