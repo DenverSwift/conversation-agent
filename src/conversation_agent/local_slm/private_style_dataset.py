@@ -48,7 +48,7 @@ class TrainingExample:
     agent_id: str
     conversation_context: tuple[dict[str, str], ...]
     relationship_context: dict[str, Any]
-    semantic_plan: dict[str, Any]
+    semantic_plan: dict[str, Any] | None
     adaptive_style_plan: dict[str, Any]
     human_target_bubbles: tuple[str, ...]
     style_evidence: tuple[dict[str, Any], ...]
@@ -98,7 +98,11 @@ class TrainingExample:
                 if isinstance(item, dict)
             ),
             relationship_context=dict(value.get("relationship_context", {})),
-            semantic_plan=dict(value.get("semantic_plan", {})),
+            semantic_plan=(
+                None
+                if value.get("semantic_plan") is None
+                else dict(value.get("semantic_plan", {}))
+            ),
             adaptive_style_plan=dict(value.get("adaptive_style_plan", {})),
             human_target_bubbles=tuple(
                 str(item).strip()
@@ -401,7 +405,7 @@ def dataset_schema() -> dict[str, Any]:
             "agent_id": {"type": "string", "minLength": 1},
             "conversation_context": {"type": "array", "minItems": 1},
             "relationship_context": {"type": "object"},
-            "semantic_plan": {"type": "object"},
+            "semantic_plan": {"type": ["object", "null"]},
             "adaptive_style_plan": {"type": "object"},
             "human_target_bubbles": {"type": "array", "items": {"type": "string"}},
             "style_evidence": {"type": "array", "items": {"type": "object"}},

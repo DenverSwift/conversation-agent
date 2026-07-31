@@ -58,6 +58,14 @@ from conversation_agent.local_slm.stage26 import (
     generate_stage26_report,
     run_stage26,
 )
+from conversation_agent.local_slm.telegram_import import (
+    TelegramPreviewOptions,
+    confirm_telegram_preview,
+    parse_optional_datetime,
+    run_telegram_preview_sync,
+    telegram_review_stats,
+)
+from conversation_agent.local_slm.telegram_privacy import privacy_check
 from conversation_agent.local_slm.training import training_dry_run
 from conversation_agent.local_slm.validator import OutputValidator
 
@@ -131,6 +139,57 @@ def add_local_slm_parsers(subparsers: Any) -> None:
     style_inspect.add_argument("--dataset", required=True)
     style_inspect.add_argument("--limit", type=int, default=30)
     style_inspect.set_defaults(func=_dataset_style_inspect)
+
+    telegram_preview = style_dataset_sub.add_parser(
+        "telegram-preview",
+        help="Build a local read-only private Telegram history preview",
+    )
+    telegram_preview.add_argument("--contact-id", type=int, required=True)
+    telegram_preview.add_argument("--limit", type=int, default=1500)
+    telegram_preview.add_argument("--since")
+    telegram_preview.add_argument("--until")
+    telegram_preview.add_argument("--output", required=True)
+    telegram_preview.add_argument("--session")
+    telegram_preview.add_argument("--account-id", type=int)
+    telegram_preview.add_argument("--context-turns", type=int, default=6)
+    telegram_preview.add_argument("--turn-gap-seconds", type=int, default=180)
+    telegram_preview.add_argument("--include-media-metadata", action="store_true")
+    telegram_preview.add_argument(
+        "--exclude-forwarded",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    telegram_preview.add_argument("--resume", action="store_true")
+    telegram_preview.add_argument("--max-episodes", type=int, default=200)
+    telegram_preview.add_argument("--review-sample-size", type=int, default=75)
+    telegram_preview.add_argument("--agent-id", default="private-agent")
+    telegram_preview.add_argument("--relationship-type", default="private_contact")
+    telegram_preview.set_defaults(func=_dataset_telegram_preview)
+
+    telegram_confirm = style_dataset_sub.add_parser(
+        "telegram-confirm",
+        help="Confirm explicitly reviewed private Telegram examples",
+    )
+    telegram_confirm.add_argument("--preview", required=True)
+    telegram_confirm.add_argument("--decisions")
+    telegram_confirm.add_argument("--fingerprint", required=True)
+    telegram_confirm.add_argument("--consent-confirmed", action="store_true")
+    telegram_confirm.add_argument("--dataset", default="datasets/private-style")
+    telegram_confirm.set_defaults(func=_dataset_telegram_confirm)
+
+    telegram_review = style_dataset_sub.add_parser(
+        "telegram-review-stats",
+        help="Summarize explicit Telegram preview review decisions",
+    )
+    telegram_review.add_argument("--preview", required=True)
+    telegram_review.set_defaults(func=_dataset_telegram_review_stats)
+
+    telegram_privacy = style_dataset_sub.add_parser(
+        "privacy-check",
+        help="Validate a private import preview privacy boundary",
+    )
+    telegram_privacy.add_argument("--path", required=True)
+    telegram_privacy.set_defaults(func=_dataset_privacy_check)
 
     benchmark = subparsers.add_parser("benchmark", help="Run fake/local benchmark")
     benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
@@ -591,6 +650,47 @@ def _dataset_style_stats(args: argparse.Namespace) -> dict[str, Any]:
 
 def _dataset_style_inspect(args: argparse.Namespace) -> dict[str, Any]:
     return inspect_style_dataset(Path(args.dataset), limit=args.limit)
+
+
+def _dataset_telegram_preview(args: argparse.Namespace) -> dict[str, Any]:
+    return run_telegram_preview_sync(
+        TelegramPreviewOptions(
+            contact_id=args.contact_id,
+            limit=args.limit,
+            output=Path(args.output),
+            since=parse_optional_datetime(args.since),
+            until=parse_optional_datetime(args.until),
+            session=args.session,
+            account_id=args.account_id,
+            context_turns=args.context_turns,
+            turn_gap_seconds=args.turn_gap_seconds,
+            include_media_metadata=bool(args.include_media_metadata),
+            exclude_forwarded=bool(args.exclude_forwarded),
+            resume=bool(args.resume),
+            max_episodes=args.max_episodes,
+            review_sample_size=args.review_sample_size,
+            agent_id=args.agent_id,
+            relationship_type=args.relationship_type,
+        )
+    )
+
+
+def _dataset_telegram_confirm(args: argparse.Namespace) -> dict[str, Any]:
+    return confirm_telegram_preview(
+        preview=Path(args.preview),
+        decisions=Path(args.decisions) if args.decisions else None,
+        fingerprint=args.fingerprint,
+        consent_confirmed=bool(args.consent_confirmed),
+        dataset_root=Path(args.dataset),
+    )
+
+
+def _dataset_telegram_review_stats(args: argparse.Namespace) -> dict[str, Any]:
+    return telegram_review_stats(Path(args.preview))
+
+
+def _dataset_privacy_check(args: argparse.Namespace) -> dict[str, Any]:
+    return privacy_check(Path(args.path))
 
 
 def _train_dry_run(args: argparse.Namespace) -> dict[str, Any]:
