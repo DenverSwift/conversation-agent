@@ -443,17 +443,23 @@ def test_profiles_use_only_human_candidates_and_are_adaptive(tmp_path: Path) -> 
             "provenance": {"classification": "ai_generated"},
         }
     )
+    verified_count = sum(
+        item.get("provenance", {}).get("classification")
+        in {"human_confirmed", "human_edited_ai"}
+        for item in episodes
+    )
     agent, relationship = build_style_profiles(
         episodes,
         agent_id="fixture-agent",
         relationship_id="fixture-relationship",
         generated_at=BASE_TIME.isoformat(),
     )
-    assert agent["sample_count"] == len(episodes) - 1
+    assert agent["sample_count"] == verified_count
     assert agent["profile_type"] == "agent_style_preview"
     assert relationship["profile_type"] == "relationship_style_preview"
     assert relationship["relationship_id"] != agent.get("relationship_id")
     assert agent["fixed_rules"] == []
+    assert agent["unverified_candidates_are_evidence"] is False
     assert agent["interpretation"] == "descriptive_distributions_not_prescriptive_rules"
     assert "bubble_count" in agent["features"]
     assert "casing" in agent["features"]

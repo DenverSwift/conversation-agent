@@ -63,7 +63,8 @@ def build_style_profiles(
         item
         for item in episodes
         if item.get("human_target", {}).get("messages")
-        and item.get("provenance", {}).get("classification") != "ai_generated"
+        and item.get("provenance", {}).get("classification")
+        in {"human_confirmed", "human_edited_ai"}
     ]
     features = _collect_features(usable)
     provenance = Counter(
@@ -111,6 +112,7 @@ def build_style_profiles(
         "profile_type": "agent_style_preview",
         "agent_id": agent_id,
         "scope": "single_contact_pilot_not_global",
+        "unverified_candidates_are_evidence": False,
     }
     relationship_profile = {
         **common,
@@ -118,6 +120,7 @@ def build_style_profiles(
         "agent_id": agent_id,
         "relationship_id": relationship_id,
         "contact_alias": "contact_private_001",
+        "unverified_candidates_are_evidence": False,
         "interaction_patterns": _relationship_patterns(usable),
     }
     return agent_profile, relationship_profile

@@ -53,8 +53,8 @@ Allowed aggregate result:
 - candidate episodes: 200;
 - excluded records: 552;
 - privacy findings: 24;
-- profile sample count: 200;
-- preview fingerprint prefix: `4d2f625488c3`;
+- verified-human profile sample count: 0;
+- preview fingerprint prefix: `541d486a4d9f`;
 - approved review decisions: 0.
 
 ## Decision
